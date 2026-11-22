@@ -68,8 +68,8 @@ sudo tailscale serve status --json > "$scratch/serve.json"
 serve_action=$(python3 - "$scratch/serve.json" "$host" "$serve_target" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as stream:
-    config = json.load(stream)
-config = config or {}
+    contents = stream.read().strip()
+config = (json.loads(contents) or {}) if contents else {}
 host, target = sys.argv[2:]
 route = f"{host}:443"
 if (config.get("AllowFunnel") or {}).get(route):
