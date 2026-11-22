@@ -1,0 +1,14 @@
+{
+  "name": "home-gallery",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild app.js --bundle --format=esm --outfile=dist/app.js"
+  },
+  "dependencies": {
+    "@serenity-kit/opaque": "1.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

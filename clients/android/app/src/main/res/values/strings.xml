@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">גלריית הבית</string>
+    <string name="connecting">מתחבר ל־Tailscale…</string>
+    <string name="login_ready">כדי לחבר את הגלריה, יש להיכנס ל־Tailscale בדפדפן.</string>
+    <string name="tailscale_login">התחברות ל־Tailscale</string>
+    <string name="approval">ממתין לאישור מנהל ה־Tailnet</string>
+    <string name="server_wait">החיבור לשרת הגלריה עדיין לא זמין. יש לבדוק את החיבור ואת הרשאת הגישה לשרת.</string>
+    <string name="wrong_tailnet">המכשיר מחובר לרשת Tailscale אחרת. הצטרף לרשת שהוזמנת אליה ואז חבר את האפליקציה מחדש.</string>
+    <string name="startup_error">החיבור ל־Tailscale לא נפתח. בדוק את החיבור לאינטרנט ונסה שוב.</string>
+    <string name="retry">ניסיון חוזר</string>
+    <string name="reset_connection">חיבור מחדש לחשבון</string>
+    <string name="reset_prompt">האפליקציה תפתח חיבור חדש שיצריך אישור מנהל מחדש.</string>
+    <string name="no_browser">לא נמצא דפדפן שאפשר לפתוח בו את מסך ההתחברות.</string>
+</resources>

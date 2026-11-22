@@ -1,0 +1,6 @@
+server/.venv/
+server/server-storage/
+**/__pycache__/
+clients/browser/node_modules/
+clients/browser/dist/
+/.idea/

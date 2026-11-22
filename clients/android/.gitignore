@@ -1,0 +1,6 @@
+/.gradle/
+/local.properties
+/**/build/
+/network/libs/*.aar
+/network/libs/*-sources.jar
+/server-host.local.txt
