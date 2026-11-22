@@ -16,7 +16,19 @@
 | ממשק דפדפן | [`clients/browser/`](clients/browser/) | HTML, CSS ו־JavaScript למסכי הגלריה, העלאה, שיתוף והצפנה בדפדפן. |
 | אפליקציית Android | [`clients/android/`](clients/android/) | Kotlin וממשק הגלריה המשותף לדפדפן, עם חיבור Tailscale מובנה באמצעות Go ו־`tsnet`. הוראות הבנייה נמצאות ב־[README של האפליקציה](clients/android/README.md). |
 
-### התקנה והגדרה של השרת ב־Debian
+### התקנה אוטומטית ב־Debian
+
+מתוך עותק של המאגר במחשב השרת, כמנהל עם גישת `sudo`, הרץ:
+
+```bash
+bash install-server.sh
+```
+
+הסקריפט תומך ב־Debian עם AMD64 או ARM64. הוא מתקין תלויות, בונה את ממשק הדפדפן, מגדיר שירות `systemd` ומפעיל Tailscale Serve. אם המחשב טרם התחבר ל־Tailscale, פתח את קישור ההתחברות שהפקודה תציג. כאשר נדרש אישור מכשיר, יש לאשר אותו ב־Tailscale. כתובת הגלריה נגזרת משם המחשב ב־Tailnet ומודפסת בסיום. כדי להשתמש בשם `home-server`, הגדר אותו כשם המחשב ב־Debian או כשם המכשיר ב־Tailscale.
+
+קובצי ההגדרה המקומיים נשמרים ב־`/etc/home-gallery/`, והנתונים ב־`/server-storage/`. הרצה חוזרת משתמשת במפתח OPAQUE שכבר נשמר. אם יש נתונים מהתקנה ידנית, שחזר קודם את מפתח OPAQUE המקורי ב־`/etc/home-gallery/opaque.env`, בשורה `OPAQUE_SERVER_SETUP=...`.
+
+### התקנה ידנית והגדרה של השרת ב־Debian
 
 1. התקן Python 3.10 ומעלה, Node.js 22 ומעלה, npm ו־Tailscale. חבר את מחשב השרת ל־Tailnet הפרטי שלך.
 2. משורש המאגר, בנה את ממשק הדפדפן, צור ערך הגדרה ראשוני ל־OPAQUE והתקן את תלויות Python.
