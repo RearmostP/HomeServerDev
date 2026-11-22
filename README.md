@@ -16,6 +16,18 @@
 | ממשק דפדפן | [`clients/browser/`](clients/browser/) | HTML, CSS ו־JavaScript למסכי הגלריה, העלאה, שיתוף והצפנה בדפדפן. |
 | אפליקציית Android | [`clients/android/`](clients/android/) | Kotlin וממשק הגלריה המשותף לדפדפן, עם חיבור Tailscale מובנה באמצעות Go ו־`tsnet`. הוראות הבנייה נמצאות ב־[README של האפליקציה](clients/android/README.md). |
 
+### בניית APK לכתובת השרת שלך
+
+מתוך שורש המאגר, על Windows או Linux עם מעבד x86-64 ו־Python 3.10 ומעלה, הרץ:
+
+```sh
+python3 build-android.py
+```
+
+ב־Windows השתמש ב־`python build-android.py`. הסקריפט ישתמש בכתובת השמורה במחשב או ינסה לזהות את `home-server` דרך Tailscale. אם הכתובת חסרה, הוא יבקש אותה. אפשר להזין כתובת מראש באמצעות `--server https://home-server.example-tailnet.ts.net/`.
+
+הסקריפט משתמש בכלי הבנייה הזמינים ומוריד את החסרים. בהתקנה ראשונה ייתכן שתתבקש לאשר את רישיונות Android SDK. ה־APK נוצר ב־`clients/android/app/build/outputs/apk/debug/app-debug.apk`. הכתובת נשמרת בקובץ הגדרות מקומי המוחרג מ־Git ומוטמעת ב־APK שנוצר.
+
 ### התקנה אוטומטית ב־Debian
 
 מתוך עותק של המאגר במחשב השרת, כמנהל עם גישת `sudo`, הרץ:

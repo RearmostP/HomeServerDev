@@ -10,7 +10,11 @@
 - `crypto/` — תיעוד החיבור למימוש ההצפנה המשותף עם הדפדפן.
 - `backup/` — מקום למודול גיבוי עתידי.
 
-## בנייה ב־Windows
+## בנייה אוטומטית
+
+מתוך שורש המאגר הרץ `python build-android.py` ב־Windows או `python3 build-android.py` ב־Linux. הסקריפט פועל על מחשב בנייה x86-64 ומפיק APK שמתאים גם לטלפוני ARM64. אפשר להעביר `--server` עם כתובת ה־HTTPS של הגלריה, או להזין אותה כשהסקריפט מבקש.
+
+## בנייה ידנית ב־Windows
 
 יעד הריצה הוא Android 8 ומעלה. בניית ברירת המחדל כוללת ARM64 למכשירים ו־x86_64 לאמולטור. נדרשים Go עם הורדת toolchain אוטומטית, JDK 17 ומעלה, Android SDK עם פלטפורמה 37, NDK r28c ו־Node.js עם npm. יש להגדיר `JAVA_HOME`, `ANDROID_HOME` ו־`ANDROID_NDK_HOME` לפי מיקומי ההתקנה. Go ו־npm צריכים להיות ב־PATH.
 
