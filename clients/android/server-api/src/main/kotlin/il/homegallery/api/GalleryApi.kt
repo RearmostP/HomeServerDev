@@ -8,6 +8,8 @@ import org.json.JSONObject
 
 class GalleryApi(
     private val connection: TailnetConnection,
+    private val sessionStore: GallerySessionStore,
+    private val openSettingsScreen: () -> Unit,
     private val completed: (String, Int, Int) -> Unit,
 ) : Closeable {
     private val executor = Executors.newFixedThreadPool(4)
@@ -72,6 +74,38 @@ class GalleryApi(
         active.clear()
         executor.shutdownNow()
     }
+
+    @JavascriptInterface
+    fun rememberSession(username: String, exportKey: String, privateKey: String) {
+        val token = connection.sessionToken()
+        if (token.isBlank() || username.length !in 3..24 ||
+            exportKey.length !in 1..256 || privateKey.length !in 1..8192) return
+        runCatching {
+            sessionStore.save(JSONObject().apply {
+                put("token", token)
+                put("username", username)
+                put("exportKey", exportKey)
+                put("privateKey", privateKey)
+            })
+        }.onFailure { android.util.Log.w("HomeGallery", "Could not save gallery session", it) }
+    }
+
+    @JavascriptInterface
+    fun restoreSession(): String {
+        val saved = sessionStore.read() ?: return ""
+        if (!connection.restoreSession(saved.optString("token"))) {
+            sessionStore.clear()
+            return ""
+        }
+        saved.remove("token")
+        return saved.toString()
+    }
+
+    @JavascriptInterface
+    fun forgetSession() = sessionStore.clear()
+
+    @JavascriptInterface
+    fun openSettings() = openSettingsScreen()
 
     private fun validId(id: String) = id.length == 36 && UUID.matches(id)
 

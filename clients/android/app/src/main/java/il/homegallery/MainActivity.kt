@@ -25,10 +25,9 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import il.homegallery.api.GalleryApi
+import il.homegallery.api.GallerySessionStore
 import il.homegallery.network.TailnetConnection
 import java.io.ByteArrayInputStream
-import java.io.File
-import java.util.UUID
 import java.util.concurrent.Executors
 import org.json.JSONObject
 
@@ -39,9 +38,12 @@ class MainActivity : Activity() {
     private lateinit var panel: LinearLayout
     private lateinit var message: TextView
     private lateinit var primary: Button
+    private lateinit var report: Button
     private lateinit var reset: Button
     private lateinit var progress: ProgressBar
+    private val tailnetOwner = Any()
     private var connection: TailnetConnection? = null
+    private lateinit var sessionStore: GallerySessionStore
     private var api: GalleryApi? = null
     private var web: WebView? = null
     private var picker: ValueCallback<Array<Uri>>? = null
@@ -65,6 +67,7 @@ class MainActivity : Activity() {
         setContentView(root)
         buildPanel()
         startConnection()
+        if (TailnetRuntime.keepConnected(this)) startForegroundService(Intent(this, TailnetService::class.java))
     }
 
     private fun rounded(start: Int, end: Int, radius: Int) = GradientDrawable(
@@ -132,11 +135,21 @@ class MainActivity : Activity() {
             }
         }
         panel.addView(reset, row())
+        report = Button(this).apply {
+            isAllCaps = false
+            background = rounded(Color.rgb(53, 49, 58), Color.rgb(53, 49, 58), 32)
+            setTextColor(TEXT)
+            setText(R.string.send_report)
+            visibility = View.GONE
+        }
+        panel.addView(report, row())
     }
 
     private fun row() = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) }
 
-    private fun showState(text: Int, button: Int? = null, canReset: Boolean = false) {
+    private fun showState(text: Int, button: Int? = null, canReset: Boolean = false, reportDetail: Int? = null) {
+        report.visibility = if (reportDetail == null) View.GONE else View.VISIBLE
+        report.setOnClickListener(if (reportDetail == null) null else View.OnClickListener { shareFailure(reportDetail) })
         if (message.text != getText(text)) {
             message.setText(text)
             message.alpha = .55f
@@ -148,31 +161,56 @@ class MainActivity : Activity() {
         progress.visibility = if (button == null && !canReset) View.VISIBLE else View.GONE
     }
 
+    private fun shareFailure(detail: Int) {
+        val time = java.time.Instant.now().toString()
+        val text = getString(R.string.report_message, getString(detail), time)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        for (app in listOf("com.whatsapp", "com.whatsapp.w4b")) {
+            try {
+                startActivity(intent.setPackage(app))
+                return
+            } catch (_: android.content.ActivityNotFoundException) {
+                // Try the other WhatsApp edition.
+            }
+        }
+        android.widget.Toast.makeText(this, R.string.no_whatsapp, android.widget.Toast.LENGTH_SHORT).show()
+    }
+
+    private fun probeFailure(error: Throwable?): Int {
+        val description = error?.message.orEmpty()
+        return when {
+            description.contains("not yet valid", ignoreCase = true) ||
+                description.contains("has expired", ignoreCase = true) -> R.string.report_certificate_time
+            description.contains("tls:", ignoreCase = true) ||
+                description.contains("x509:", ignoreCase = true) -> R.string.report_tls
+            description.contains("timeout", ignoreCase = true) ||
+                description.contains("deadline exceeded", ignoreCase = true) -> R.string.report_timeout
+            else -> R.string.report_server
+        }
+    }
+
     private fun startConnection(replaceState: Boolean = false) {
         val generation = ++cycle
         main.removeCallbacks(poll)
         authUrl = null
         showState(R.string.connecting)
         val host = assets.open("server-host.txt").bufferedReader().use { it.readText().trim() }
+        sessionStore = GallerySessionStore(applicationContext, host)
+        if (replaceState) sessionStore.clear()
         worker.execute {
             val result = runCatching {
-                connection?.close()
-                connection = null
-                val preferences = getSharedPreferences("tailnet", MODE_PRIVATE)
-                val existing = preferences.getString("node", null)
-                val token = if (existing == null || replaceState) {
-                    UUID.randomUUID().toString().also {
-                        check(preferences.edit().putString("node", it).commit())
-                    }
-                } else existing
-                val nodeDir = File(noBackupFilesDir, "tailscale-" + token)
-                if (replaceState && existing != null) File(noBackupFilesDir, "tailscale-" + existing).deleteRecursively()
-                TailnetConnection(nodeDir, "home-gallery-" + token.take(8), host).also { connection = it }
+                TailnetRuntime.acquire(applicationContext, tailnetOwner, replaceState).also { connection = it }
             }
             main.post {
                 if (closed || generation != cycle) return@post
                 if (result.isSuccess) checkConnection(generation)
-                else showState(R.string.startup_error, R.string.retry)
+                else {
+                    android.util.Log.w("HomeGallery", "Tailscale startup failed", result.exceptionOrNull())
+                    showState(R.string.startup_error, R.string.retry, reportDetail = R.string.startup_error)
+                }
             }
         }
     }
@@ -181,21 +219,21 @@ class MainActivity : Activity() {
         worker.execute {
             val current = connection
             val status = runCatching { current?.status() }.getOrNull()
-            val galleryReady = status?.state == "Running" && runCatching { current?.probe() }.isSuccess
+            val probe = if (status?.state == "Running") runCatching { current?.probe() } else null
             main.post {
                 if (closed || generation != cycle) return@post
                 authUrl = status?.authUrl?.takeIf(String::isNotBlank)?.let(Uri::parse)
                     ?.takeIf { it.scheme == "https" && it.host == "login.tailscale.com" && it.userInfo == null }
                 when {
-                    galleryReady && current != null -> {
+                    probe?.isSuccess == true && current != null -> {
                         openGallery(current)
                         return@post
                     }
-                    status?.state == "WrongTailnet" -> showState(R.string.wrong_tailnet, canReset = true)
+                    status?.state == "WrongTailnet" -> showState(R.string.wrong_tailnet, canReset = true, reportDetail = R.string.wrong_tailnet)
                     status?.state == "NeedsMachineAuth" -> showState(R.string.approval, canReset = true)
-                    status?.state == "Running" -> showState(R.string.server_wait, canReset = true)
+                    status?.state == "Running" -> showState(R.string.server_wait, reportDetail = probeFailure(probe?.exceptionOrNull()))
                     authUrl != null -> showState(R.string.login_ready, R.string.tailscale_login)
-                    status == null -> showState(R.string.startup_error, R.string.retry)
+                    status == null -> showState(R.string.startup_error, R.string.retry, reportDetail = R.string.startup_error)
                     else -> showState(R.string.connecting)
                 }
                 main.postDelayed(poll, 2500)
@@ -229,7 +267,9 @@ class MainActivity : Activity() {
                 }
             }
         }
-        val transport = GalleryApi(current) { id, status, length ->
+        val transport = GalleryApi(current, sessionStore, { main.post {
+            if (!closed) startActivity(Intent(this, SettingsActivity::class.java))
+        } }) { id, status, length ->
             main.post {
                 if (!closed && web === view) {
                     view.evaluateJavascript(
@@ -277,8 +317,26 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == PICK_PHOTOS) {
-            picker?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data))
+            val callback = picker
             picker = null
+            val selected = if (resultCode == RESULT_OK && data != null) {
+                buildList {
+                    data.clipData?.let { clip ->
+                        for (index in 0 until clip.itemCount) clip.getItemAt(index).uri?.let(::add)
+                    }
+                    data.data?.let(::add)
+                }.distinct().filter { uri ->
+                    uri.scheme == "content" && checkUriPermission(
+                        uri, android.os.Process.myPid(), android.os.Process.myUid(),
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                }
+            } else emptyList()
+            callback?.onReceiveValue(selected.takeIf { it.isNotEmpty() }?.toTypedArray())
+            if (resultCode == RESULT_OK && selected.isEmpty()) {
+                android.widget.Toast.makeText(this, R.string.photo_selection_unavailable,
+                    android.widget.Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -293,7 +351,7 @@ class MainActivity : Activity() {
             root.removeView(it)
             it.destroy()
         }
-        worker.execute { runCatching { connection?.close() } }
+        worker.execute { runCatching { TailnetRuntime.release(tailnetOwner) } }
         worker.shutdown()
         super.onDestroy()
     }

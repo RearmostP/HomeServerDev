@@ -21,6 +21,8 @@ import (
 
 const maxBody = 26 << 20
 
+var sessionToken = regexp.MustCompile(`^[a-zA-Z0-9_-]{43}$`)
+
 var galleryPath = regexp.MustCompile(`^/api/[a-zA-Z0-9_/-]+$`)
 
 type Client struct {
@@ -146,6 +148,31 @@ func (c *Client) Request(method, path, contentType, body string) (string, error)
 	}
 	value, err := json.Marshal(reply{Status: response.StatusCode, Body: base64.StdEncoding.EncodeToString(data)})
 	return string(value), err
+}
+
+// SessionToken returns the current gallery authentication cookie.
+func (c *Client) SessionToken() string {
+	for _, cookie := range c.http.Jar.Cookies(c.galleryURL()) {
+		if cookie.Name == "gallery_session" {
+			return cookie.Value
+		}
+	}
+	return ""
+}
+
+// RestoreSession restores a previously authenticated gallery cookie from app storage.
+func (c *Client) RestoreSession(token string) bool {
+	if !sessionToken.MatchString(token) {
+		return false
+	}
+	c.http.Jar.SetCookies(c.galleryURL(), []*http.Cookie{
+		{Name: "gallery_session", Value: token, Path: "/", Secure: true, HttpOnly: true},
+	})
+	return true
+}
+
+func (c *Client) galleryURL() *url.URL {
+	return &url.URL{Scheme: "https", Host: strings.TrimPrefix(c.origin, "https://"), Path: "/"}
 }
 
 func (c *Client) Close() error {

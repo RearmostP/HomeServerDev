@@ -4,6 +4,9 @@ import { generateIdentity, openIdentity, newAlbumKey, wrapAlbumKey, openAlbumKey
 const byId = id => document.getElementById(id);
 const items = byId("items");
 const tabs = [...document.querySelectorAll("[data-tab]")];
+const quickMenu = byId("quick-menu");
+const menuTrigger = byId("menu-trigger");
+const titles = { photos: "תמונות", albums: "אלבומים", shared: "אלבומים", devices: "מכשירים" };
 const viewer = byId("viewer");
 const urls = new Set();
 let account, identity, activeAlbum, entries = [], position = 0, generation = 0;
@@ -13,6 +16,9 @@ let editAction;
 let selecting = false;
 const selectedPhotos = new Set();
 let notice;
+const pendingUploads = new Set();
+let uploadRate = 512 * 1024;
+let encryptionRate = 24 * 1024 * 1024;
 
 function status(message = "") {
   clearTimeout(notice);
@@ -32,7 +38,9 @@ async function api(path, payload, binary = false) {
   const response = await fetch("/api/" + path, options);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || "הפעולה נכשלה");
+    const failure = new Error(error.error || "הפעולה נכשלה");
+    failure.status = response.status;
+    throw failure;
   }
   return binary ? response.arrayBuffer() : response.json();
 }
@@ -93,7 +101,12 @@ async function login(username, password) {
     device: (navigator.userAgentData?.platform || navigator.platform || "דפדפן").slice(0, 120),
   });
   identity = await openIdentity(result.exportKey, username, session.privateKey);
-  account = session.username;
+  window.GalleryNative?.rememberSession(session.username, result.exportKey, session.privateKey);
+  await openGallerySession(session.username);
+}
+
+async function openGallerySession(username) {
+  account = username;
   byId("account").textContent = account;
   byId("gallery").hidden = false;
   byId("auth").hidden = true;
@@ -188,6 +201,7 @@ async function renderPhotos(album, renderId) {
   entries = photos;
   byId("selection").hidden = !photos.length;
   if (!photos.length) items.append(node("p", "האלבום ריק", "empty"));
+  renderPendingUploads();
   const formatter = new Intl.DateTimeFormat("he", { dateStyle: "long" });
   const observer = new IntersectionObserver(records => {
     for (const record of records) {
@@ -230,12 +244,20 @@ async function render(nextTab, selected) {
   const renderId = resetView();
   tab = nextTab;
   activeAlbum = null;
+  const albumTab = tab === "albums" || tab === "shared";
+  byId("album-tabs").hidden = !albumTab || Boolean(selected);
+  byId("album-menu").open = false;
   for (const button of tabs) {
-    if (button.dataset.tab === tab) button.setAttribute("aria-current", "page");
+    const active = button.closest(".gallery-tabs")
+      ? button.dataset.tab === (albumTab ? "albums" : tab)
+      : button.dataset.tab === tab;
+    if (active) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
   }
-  for (const id of ["upload", "share", "new-album", "remove-album", "selection"]) byId(id).hidden = true;
-  byId("title").textContent = selected?.name || tabs.find(button => button.dataset.tab === tab).textContent;
+  if (tab === "devices") menuTrigger.setAttribute("aria-current", "page");
+  else menuTrigger.removeAttribute("aria-current");
+  for (const id of ["upload", "share", "new-album", "remove-album", "selection", "album-menu"]) byId(id).hidden = true;
+  byId("title").textContent = selected?.name || titles[tab];
   if (tab === "devices") {
     const { devices } = await api("devices");
     if (renderId !== generation) return;
@@ -263,15 +285,20 @@ async function render(nextTab, selected) {
     activeAlbum = current;
     const own = current.owner === account;
     byId("upload").hidden = !own;
-    byId("share").hidden = !own;
-    byId("remove-album").hidden = !own || current.number === 1;
+    const canManage = own && current.number !== 1;
+    byId("album-menu").hidden = !canManage;
+    byId("share").hidden = !canManage;
+    byId("remove-album").hidden = !canManage;
     byId("title").textContent = selected ? current.name : "תמונות";
     return renderPhotos(current, renderId);
   }
   byId("new-album").hidden = tab !== "albums";
-  const shown = albums.filter(album => tab === "shared" ? album.owner !== account || album.shared : album.owner === account);
+  const shown = albums.filter(album => {
+    if (album.owner === account && album.number === 1) return false;
+    return tab === "shared" ? album.owner !== account || album.shared : album.owner === account;
+  });
   if (!shown.length) items.append(node("p", "אין אלבומים להצגה", "empty"));
-  const grid = node("div", "", "grid");
+  const grid = node("div", "", "grid album-grid");
   items.append(grid);
   const observer = new IntersectionObserver(records => {
     for (const record of records) {
@@ -296,14 +323,37 @@ async function render(nextTab, selected) {
     const card = node("button", "", "album");
     const cover = node("span", "▧", "cover");
     cover.dataset.index = index;
-    card.append(cover, node("strong", album.name), node("span", album.owner + " · " + album.count + " תמונות", "detail"));
+    const count = album.count + " תמונות";
+    const detail = album.owner === account ? count : album.owner + " · " + count;
+    card.append(cover, node("strong", album.name), node("span", detail, "detail"));
     card.onclick = () => action(card, () => render(tab, album));
     grid.append(card);
     if (album.count) observer.observe(cover);
   });
 }
 
-for (const button of tabs) button.onclick = () => action(button, () => render(button.dataset.tab));
+if (window.GalleryNative?.openSettings) {
+  const settings = byId("gallery-settings");
+  settings.hidden = false;
+  quickMenu.classList.add("with-settings");
+  settings.onclick = () => {
+    quickMenu.close();
+    window.GalleryNative.openSettings();
+  };
+}
+menuTrigger.onclick = () => {
+  quickMenu.showModal();
+  menuTrigger.setAttribute("aria-expanded", "true");
+};
+quickMenu.addEventListener("close", () => menuTrigger.setAttribute("aria-expanded", "false"));
+quickMenu.addEventListener("click", event => {
+  if (event.target === quickMenu) quickMenu.close();
+});
+
+for (const button of tabs) button.onclick = () => {
+  if (quickMenu.open) quickMenu.close();
+  action(button, () => render(button.dataset.tab));
+};
 
 function edit(title, label, maxLength, callback) {
   byId("edit-title").textContent = title;
@@ -330,6 +380,7 @@ byId("new-album").onclick = () => edit("אלבום חדש", "שם האלבום",
 });
 byId("share").onclick = () => {
   const album = activeAlbum;
+  byId("album-menu").open = false;
   edit("שיתוף אלבום", "שם המשתמש של החבר", 24, async username => {
     const { publicKey } = await api("users/" + encodeURIComponent(username) + "/key");
     const key = await openAlbumKey(identity, album.wrapped_key);
@@ -339,6 +390,7 @@ byId("share").onclick = () => {
 };
 byId("remove-album").onclick = () => {
   const album = activeAlbum;
+  byId("album-menu").open = false;
   if (!confirm("למחוק את האלבום ואת כל התמונות שבו?")) return;
   action(byId("remove-album"), async () => {
     await api("albums/" + album.number + "/delete", {});
@@ -356,13 +408,81 @@ byId("selection").onclick = () => {
   }
 };
 
-async function sendPhoto(album, rawKey, file) {
+function sameAlbum(left, right) {
+  return left?.owner === right?.owner && left?.number === right?.number;
+}
+
+function renderPendingUploads() {
+  items.querySelector(".pending-grid")?.remove();
+  if (!activeAlbum) return;
+  const uploads = [...pendingUploads].filter(upload => sameAlbum(upload.album, activeAlbum));
+  const empty = items.querySelector(".empty");
+  if (empty) empty.hidden = uploads.length > 0;
+  if (!uploads.length) return;
+  const grid = node("div", "", "grid pending-grid");
+  grid.append(...uploads.map(upload => upload.tile));
+  items.prepend(grid);
+}
+
+function createPendingUpload(album, file) {
+  const tile = node("div", "", "tile pending-tile");
+  const image = node("img");
+  image.alt = file.name;
+  image.src = URL.createObjectURL(file);
+  const indicator = node("span", "…", "upload-progress");
+  indicator.setAttribute("role", "progressbar");
+  indicator.setAttribute("aria-label", file.name);
+  indicator.setAttribute("aria-valuetext", "ממתינה להעלאה");
+  tile.append(image, indicator);
+  const upload = { album, tile, indicator, url: image.src };
+  pendingUploads.add(upload);
+  return upload;
+}
+
+function removePendingUpload(upload) {
+  if (!pendingUploads.delete(upload)) return;
+  upload.tile.remove();
+  URL.revokeObjectURL(upload.url);
+}
+
+function postPhoto(path, data, onProgress) {
+  // Android routes fetch through its native Tailscale bridge.
+  if (!onProgress || window.GalleryNative) return api(path, data);
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", "/api/" + path);
+    request.responseType = "json";
+    request.upload.onprogress = event => {
+      if (event.lengthComputable) onProgress(event.loaded / event.total);
+    };
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) resolve(request.response);
+      else reject(new Error(request.response?.error || "הפעולה נכשלה"));
+    };
+    request.onerror = request.onabort = () => reject(new Error("החיבור לשרת נותק"));
+    request.send(data);
+  });
+}
+
+async function sendPhoto(album, rawKey, file, progress) {
+  const started = performance.now();
   const payload = await encryptPhoto(rawKey, file);
+  if (progress) {
+    const measured = file.size / Math.max((performance.now() - started) / 1000, .02);
+    encryptionRate = encryptionRate * .75 + measured * .25;
+    progress.onEncrypted();
+  }
   const data = new FormData();
   data.append("ciphertext", payload.ciphertext);
   data.append("metadata", payload.metadata);
   data.append("albumVersion", album.wrapped_key);
-  await api("albums/" + album.number + "/photos", data);
+  const sending = performance.now();
+  const response = await postPhoto("albums/" + album.number + "/photos", data, progress?.onUpload);
+  if (progress) {
+    const measured = file.size / Math.max((performance.now() - sending) / 1000, .05);
+    uploadRate = uploadRate * .75 + measured * .25;
+  }
+  return response;
 }
 
 byId("copy-photos").onclick = () => action(byId("copy-photos"), async () => {
@@ -405,35 +525,113 @@ byId("copy-photos").onclick = () => action(byId("copy-photos"), async () => {
 });
 byId("cancel-copy").onclick = () => byId("copy-dialog").close();
 
+const secondsFormat = new Intl.NumberFormat("he", { style: "unit", unit: "second", unitDisplay: "narrow" });
+const minutesFormat = new Intl.NumberFormat("he", { style: "unit", unit: "minute", unitDisplay: "narrow" });
+
+function updateUploadIndicator(upload, percent, remaining, waiting = false) {
+  const seconds = Math.ceil(remaining);
+  const label = seconds >= 60 ? minutesFormat.format(Math.ceil(seconds / 60))
+    : seconds > 0 ? secondsFormat.format(seconds) : "…";
+  upload.indicator.style.setProperty("--progress", percent + "%");
+  upload.indicator.textContent = label;
+  upload.indicator.setAttribute("aria-valuenow", percent);
+  upload.indicator.setAttribute("aria-valuetext", waiting ? "בתור, כ־" + label + " לסיום"
+    : seconds > 0 ? "כ־" + label + " לסיום" : "ממתינה לאישור");
+}
+
+async function uploadWithProgress(upload, rawKey, file, queued) {
+  const encryptionSeconds = Math.max(file.size / encryptionRate, .15);
+  const uploadSeconds = Math.max(file.size / uploadRate, .4);
+  const expected = encryptionSeconds + uploadSeconds;
+  const started = performance.now();
+  let uploadStarted, sent;
+  const encryptedShare = encryptionSeconds / expected;
+  function update() {
+    const now = performance.now();
+    const elapsed = (now - started) / 1000;
+    const sendingFor = uploadStarted === undefined ? 0 : (now - uploadStarted) / 1000;
+    // The native bridge reports completion, so use elapsed time when byte progress is unavailable.
+    const fraction = sent ?? Math.min(sendingFor / uploadSeconds, .95);
+    const remaining = uploadStarted === undefined
+      ? Math.max(encryptionSeconds - elapsed, 0) + uploadSeconds
+      : sent > 0 && sendingFor > .2
+        ? sendingFor * (1 - sent) / sent
+        : Math.max(uploadSeconds - sendingFor, 0);
+    const progress = uploadStarted === undefined
+      ? Math.min(elapsed / encryptionSeconds, .95) * encryptedShare
+      : encryptedShare + fraction * (1 - encryptedShare);
+    const percent = Math.min(99, Math.round(progress * 100));
+    updateUploadIndicator(upload, percent, remaining);
+    let queueTime = remaining;
+    for (const { file, preview } of queued) {
+      queueTime += Math.max(file.size / encryptionRate, .15) + Math.max(file.size / uploadRate, .4);
+      updateUploadIndicator(preview, 0, queueTime, true);
+    }
+  }
+
+  update();
+  const timer = setInterval(update, 250);
+  try {
+    await sendPhoto(upload.album, rawKey, file, {
+      onEncrypted() {
+        uploadStarted = performance.now();
+        update();
+      },
+      onUpload(fraction) {
+        sent = fraction;
+        update();
+      },
+    });
+    upload.indicator.style.setProperty("--progress", "100%");
+    upload.indicator.textContent = "✓";
+    upload.indicator.setAttribute("aria-valuenow", "100");
+    upload.indicator.setAttribute("aria-valuetext", "הועלתה");
+  } finally {
+    clearInterval(timer);
+  }
+}
+
 byId("files").onchange = event => {
   const input = event.currentTarget;
   const files = [...input.files];
   const album = activeAlbum;
-  const uploadTab = tab;
-  const renderId = generation;
+  const session = identity;
   action(input, async () => {
     if (!album || !files.length) return;
-    const rawKey = await openAlbumKey(identity, album.wrapped_key);
+    const supported = files.filter(file => imageTypes.has(file.type) && file.size <= 25 * 1024 * 1024);
+    const uploads = supported.map(file => ({ file, preview: createPendingUpload(album, file) }));
+    renderPendingUploads();
     let uploaded = 0;
+    let failure;
     try {
-      for (const file of files) {
-        if (!account) break;
-        if (!imageTypes.has(file.type) || file.size > 25 * 1024 * 1024) {
-          throw new Error("ניתן להעלות JPEG, PNG, WebP, GIF ו־AVIF עד 25MB לתמונה");
+      const rawKey = await openAlbumKey(session, album.wrapped_key);
+      for (const [index, { file, preview }] of uploads.entries()) {
+        if (identity !== session) break;
+        try {
+          await uploadWithProgress(preview, rawKey, file, uploads.slice(index + 1));
+          uploaded++;
+        } catch (error) {
+          removePendingUpload(preview);
+          failure ??= error;
         }
-        status("מצפין ומעלה " + (uploaded + 1) + " מתוך " + files.length);
-        await sendPhoto(album, rawKey, file);
-        uploaded++;
       }
     } finally {
       input.value = "";
-      if (uploaded && generation === renderId) await render(uploadTab, album);
+      for (const { preview } of uploads) removePendingUpload(preview);
+      if (identity === session && sameAlbum(album, activeAlbum)) {
+        if (uploaded) await render(tab, activeAlbum);
+        else renderPendingUploads();
+      }
     }
-    status(uploaded + " תמונות הועלו");
+    if (identity !== session) return;
+    if (failure) throw failure;
+    if (supported.length !== files.length) status("חלק מהקבצים אינם מסוג נתמך או גדולים מ־25MB");
   });
 };
 
-function lock() {
+function lock({ forget = true } = {}) {
+  if (forget) window.GalleryNative?.forgetSession();
+  for (const upload of pendingUploads) removePendingUpload(upload);
   coverObserver?.disconnect();
   resetView();
   identity = account = activeAlbum = null;
@@ -441,6 +639,33 @@ function lock() {
   byId("auth").hidden = false;
 }
 byId("logout").onclick = () => action(byId("logout"), async () => {
+  quickMenu.close();
   await api("logout", {});
   lock();
 });
+
+async function resumeGallerySession() {
+  const native = window.GalleryNative;
+  if (!native) return;
+  const submit = byId("submit-auth");
+  submit.disabled = true;
+  try {
+    const saved = native.restoreSession();
+    if (!saved) return;
+    const { username, exportKey, privateKey } = JSON.parse(saved);
+    try {
+      identity = await openIdentity(exportKey, username, privateKey);
+    } catch {
+      native.forgetSession();
+      return;
+    }
+    await openGallerySession(username);
+  } catch (error) {
+    lock({ forget: error.status === 401 });
+    if (error.status !== 401) status(error.message);
+  } finally {
+    submit.disabled = false;
+  }
+}
+
+void resumeGallerySession();

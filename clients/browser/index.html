@@ -20,31 +20,61 @@
     </form>
   </main>
   <div id="gallery" class="layout" hidden>
-    <aside>
-      <strong>גלריית הבית</strong>
-      <nav aria-label="גלריה">
-        <button data-tab="photos" aria-current="page">תמונות</button>
-        <button data-tab="albums">אלבומים</button>
-        <button data-tab="shared">משותפים</button>
-        <button data-tab="devices">מכשירים</button>
-      </nav>
-      <button id="logout">יציאה</button>
-    </aside>
+    <nav class="gallery-tabs" aria-label="ניווט בגלריה">
+      <button type="button" data-tab="photos" aria-current="page">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="4"/><circle cx="9" cy="9" r="1.5"/><path d="m4 17 5-4 3 2 4-5 4 4"/></svg>
+        <span>תמונות</span>
+      </button>
+      <button type="button" data-tab="albums">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="7" width="16" height="13" rx="3"/><path d="M3 14V7a3 3 0 0 1 3-3h11M9 16l3-3 2 2 3-3 2 2"/></svg>
+        <span>אלבומים</span>
+      </button>
+      <button type="button" id="menu-trigger" aria-haspopup="dialog" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/></svg>
+        <span>תפריט</span>
+      </button>
+    </nav>
     <main class="content">
       <header><div><p id="account"></p><h1 id="title">תמונות</h1></div>
         <div id="actions">
-          <button id="new-album" hidden>אלבום חדש</button>
-          <button id="selection" hidden>בחירת תמונות</button>
-          <button id="copy-photos" hidden>הוספה לאלבום</button>
-          <button id="share" hidden>שיתוף</button>
-          <button id="remove-album" hidden>מחיקת אלבום</button>
-          <label id="upload" class="primary" hidden>העלאה<input type="file" id="files" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple></label>
+          <button type="button" id="selection" hidden>בחירת תמונות</button>
+          <button type="button" id="copy-photos" hidden>הוספה לאלבום</button>
+          <details id="album-menu" hidden>
+            <summary class="icon-action" aria-label="אפשרויות אלבום">⋮</summary>
+            <div class="album-actions">
+              <button type="button" id="share" hidden>שיתוף</button>
+              <button type="button" id="remove-album" hidden>מחיקת אלבום</button>
+            </div>
+          </details>
+          <button type="button" id="new-album" class="icon-action" aria-label="אלבום חדש" title="אלבום חדש" hidden>+</button>
+          <label id="upload" class="icon-action" title="העלאת תמונות" hidden>
+            <span aria-hidden="true">+</span>
+            <input type="file" id="files" aria-label="העלאת תמונות" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple>
+          </label>
         </div>
       </header>
+      <div class="album-tabs" id="album-tabs" hidden>
+        <button type="button" data-tab="albums">האלבומים שלי</button>
+        <button type="button" data-tab="shared">משותפים</button>
+      </div>
       <section id="items"></section>
     </main>
   </div>
   <p id="status" role="status" aria-live="polite" hidden></p>
+  <dialog id="quick-menu" aria-label="תפריט">
+    <button type="button" data-tab="devices">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 17h2"/></svg>
+      <span>מכשירים</span>
+    </button>
+    <button type="button" id="gallery-settings" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="8" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+      <span>הגדרות</span>
+    </button>
+    <button type="button" id="logout">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5m2-8h7m-3-3 3 3-3 3"/></svg>
+      <span>יציאה</span>
+    </button>
+  </dialog>
   <dialog id="edit"><form id="edit-form">
     <h2 id="edit-title"></h2>
     <label id="edit-label" for="edit-input"></label>

@@ -62,17 +62,15 @@ function aes(raw) {
 }
 
 export async function encryptPhoto(rawAlbumKey, file) {
-  const rawPhotoKey = crypto.getRandomValues(new Uint8Array(32));
-  const photoKey = await aes(rawPhotoKey);
-  const photo = await encrypt(photoKey, await file.arrayBuffer(), "home-gallery/photo/v1");
-  const details = await encrypt(photoKey, bytes.encode(JSON.stringify({
+  const albumKey = await aes(rawAlbumKey);
+  const photo = await encrypt(albumKey, await file.arrayBuffer(), "home-gallery/photo/v2");
+  const details = await encrypt(albumKey, bytes.encode(JSON.stringify({
     type: file.type, date: file.lastModified || Date.now(), name: file.name,
-  })), "home-gallery/details/v1");
-  const wrapped = await encrypt(await aes(rawAlbumKey), rawPhotoKey, "home-gallery/photo-key/v1");
+  })), "home-gallery/details/v2");
   return {
     ciphertext: new Blob([photo.ciphertext]),
     metadata: JSON.stringify({
-      iv: photo.iv, key: encode(wrapped.ciphertext), keyIv: wrapped.iv,
+      version: 2, iv: photo.iv,
       details: encode(details.ciphertext), detailsIv: details.iv,
     }),
   };
@@ -80,10 +78,16 @@ export async function encryptPhoto(rawAlbumKey, file) {
 
 export async function openPhoto(rawAlbumKey, record) {
   const envelope = JSON.parse(record.metadata);
-  const key = await aes(await decrypt(await aes(rawAlbumKey), decode(envelope.key), envelope.keyIv, "home-gallery/photo-key/v1"));
-  const details = JSON.parse(new TextDecoder().decode(await decrypt(key, decode(envelope.details), envelope.detailsIv, "home-gallery/details/v1")));
+  const version = envelope.version === undefined ? 1 : envelope.version;
+  if (version !== 1 && version !== 2) throw new Error("Unsupported photo encryption version");
+
+  const albumKey = await aes(rawAlbumKey);
+  const key = version === 2 ? albumKey : await aes(await decrypt(
+    albumKey, decode(envelope.key), envelope.keyIv, "home-gallery/photo-key/v1",
+  ));
+  const details = JSON.parse(new TextDecoder().decode(await decrypt(key, decode(envelope.details), envelope.detailsIv, `home-gallery/details/v${version}`)));
   if (!imageTypes.has(details.type)) throw new Error("סוג תמונה לא נתמך");
   return { ...details, async blob(ciphertext) {
-    return new Blob([await decrypt(key, ciphertext, envelope.iv, "home-gallery/photo/v1")], { type: details.type });
+    return new Blob([await decrypt(key, ciphertext, envelope.iv, `home-gallery/photo/v${version}`)], { type: details.type });
   } };
 }

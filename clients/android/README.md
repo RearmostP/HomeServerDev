@@ -46,7 +46,7 @@ powershell -ExecutionPolicy Bypass -File .\network\build.ps1
 
 ```kotlin
 // לאחר התחברות ואישור. להריץ מחוץ ל־UI thread.
-val connection = TailnetConnection(stateDirectory, "home-gallery-example", "home-server.example-tailnet.ts.net")
+val connection = TailnetConnection(context, stateDirectory, "home-gallery-example", "home-server.example-tailnet.ts.net")
 connection.use {
     if (it.status().state == "Running") {
         it.probe()

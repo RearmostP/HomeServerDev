@@ -13,12 +13,25 @@ button:disabled { opacity: .5; cursor: wait; }
 label { display: grid; gap: .4rem; }
 input:not([type=file]) { width: 100%; border: 1px solid #69606b; border-radius: .65rem; padding: .7rem; background: #171619; color: inherit; }
 input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.layout { display: grid; grid-template-columns: 13rem minmax(0, 1fr); min-height: 100dvh; }
-aside { background: var(--surface); padding: 1.25rem; display: grid; align-content: start; gap: 1.25rem; }
-nav { display: grid; gap: .35rem; }
-nav button { text-align: start; background: transparent; }
-nav button[aria-current] { background: #503c40; color: #ffdfca; }
-.content { padding: clamp(1rem, 4vw, 3rem); }
+.layout { min-height: 100dvh; }
+.content { max-width: 76rem; margin-inline: auto; padding: clamp(1rem, 4vw, 3rem); padding-bottom: 7rem; }
+.gallery-tabs, #quick-menu { width: min(22rem, calc(100% - 2rem)); }
+.gallery-tabs { position: fixed; inset: auto 0 max(.85rem, env(safe-area-inset-bottom)); margin-inline: auto; z-index: 2; display: grid; grid-template-columns: repeat(3, 1fr); gap: .25rem; padding: .35rem; border-radius: 1.75rem; border: 1px solid #504650; background: #29252ceF; box-shadow: 0 .4rem 1.5rem #100e1290; }
+.gallery-tabs button, #quick-menu button { display: grid; justify-items: center; align-content: center; gap: .3rem; padding: .48rem .2rem; background: transparent; color: #d9cfd8; font-size: .72rem; min-height: 3.4rem; }
+.gallery-tabs button[aria-current], .gallery-tabs button[aria-expanded="true"], .album-tabs button[aria-current] { background: #49373e; color: #ffdfca; }
+.gallery-tabs svg, #quick-menu svg { width: 1.2rem; height: 1.2rem; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+#quick-menu[open] { position: fixed; inset: auto 0 calc(max(.85rem, env(safe-area-inset-bottom)) + 4.45rem); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem; padding: .45rem; border: 1px solid #504650; margin-inline: auto; background: #29252c; box-shadow: 0 .35rem 1.4rem #100e1290; }
+#quick-menu.with-settings[open] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#quick-menu::backdrop { background: #140f184d; }
+.album-tabs { display: flex; gap: .35rem; margin-bottom: 1rem; }
+.album-tabs button { padding: .42rem .85rem; font-size: .85rem; }
+.icon-action { display: grid; position: relative; place-items: center; width: 2.65rem; height: 2.65rem; padding: 0; border-radius: 50%; background: #39313b; color: var(--accent); font-size: 1.6rem; line-height: 1; cursor: pointer; }
+.icon-action:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+#album-menu { position: relative; }
+#album-menu summary { list-style: none; }
+#album-menu summary::-webkit-details-marker { display: none; }
+.album-actions { position: absolute; top: calc(100% + .35rem); inset-inline-end: 0; z-index: 1; min-width: 9rem; display: grid; gap: .2rem; padding: .35rem; background: var(--surface); border: 1px solid #504650; border-radius: .9rem; box-shadow: 0 .3rem 1rem #100e1280; }
+.album-actions button { text-align: start; white-space: nowrap; background: transparent; }
 header, #actions, .dialog-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 header { justify-content: space-between; margin-bottom: 1.5rem; }
 h1, h2, p { margin: 0; }
@@ -28,8 +41,29 @@ h2 { font-size: 1.15rem; margin-block: 1rem .65rem; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr)); gap: .6rem; }
 .tile { padding: 0; overflow: hidden; border-radius: .75rem; aspect-ratio: 1; background: #302a34; }
 .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.album { background: var(--surface); text-align: start; border-radius: 1rem; display: grid; gap: .5rem; }
-.cover { aspect-ratio: 1.5; display: grid; place-items: center; border-radius: .65rem; background: linear-gradient(135deg, #684e59, #342d44); color: #ffe4cf; font-size: 2.25rem; overflow: hidden; }
+.pending-grid { margin-bottom: .6rem; }
+.pending-tile { position: relative; }
+.upload-progress {
+  position: absolute;
+  inset: auto .4rem .4rem auto;
+  display: grid;
+  place-items: center;
+  width: 2.85rem;
+  aspect-ratio: 1;
+  border: 3px solid transparent;
+  border-radius: 50%;
+  background: linear-gradient(#201a22, #201a22) padding-box,
+    conic-gradient(var(--accent) var(--progress, 0%), #625565 0) border-box;
+  color: #fff;
+  font-size: .7rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+.album-grid { grid-template-columns: repeat(auto-fill, minmax(9.2rem, 1fr)); gap: 1.15rem .8rem; }
+.album { background: transparent; text-align: start; border-radius: 1rem; display: grid; gap: .28rem; min-width: 0; padding: 0; }
+.album strong, .album .detail { padding-inline: .2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.album .detail { font-size: .76rem; }
+.cover { aspect-ratio: 1; display: grid; place-items: center; border-radius: .9rem; background: linear-gradient(135deg, #684e59, #342d44); color: #ffe4cf; font-size: 2.25rem; overflow: hidden; }
 .cover img { width: 100%; height: 100%; object-fit: cover; }
 .empty { padding: 2rem 0; }
 .device { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .6rem; padding: .75rem; background: var(--surface); border-radius: .75rem; }
@@ -39,17 +73,12 @@ dialog::backdrop { background: #0e0b11dc; }
 #viewer[open] { width: min(95vw, 80rem); height: 85dvh; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .25rem; padding: 1rem; background: #111; }
 #viewer img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
 #close-viewer { position: absolute; inset: .5rem .5rem auto auto; }
+.layout:not([hidden]) + #status { bottom: 5.35rem; z-index: 3; }
 @media (max-width: 660px) {
-  .layout { grid-template-columns: 1fr; }
-  aside { position: fixed; inset: auto 0 0; z-index: 1; display: flex; gap: .25rem; padding: .4rem; }
-  aside strong { display: none; }
-  nav { display: flex; gap: .1rem; flex: 1; }
-  nav button, aside > button { font-size: .78rem; padding: .65rem .45rem; }
-  .content { padding-bottom: 5rem; }
   .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .3rem; }
-  .album { padding: .45rem; }
-  #status { bottom: 3.75rem; }
-  .layout[hidden] + #status { bottom: 1rem; }
+  .album-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem .55rem; }
+  header { margin-bottom: 1rem; }
+  #actions > button:not(.icon-action) { padding: .43rem .62rem; font-size: .75rem; }
 }
 
 .tile[aria-pressed="true"] { outline: 3px solid var(--accent); outline-offset: -3px; }

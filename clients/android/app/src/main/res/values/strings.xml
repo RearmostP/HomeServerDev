@@ -4,11 +4,26 @@
     <string name="login_ready">כדי לחבר את הגלריה, יש להיכנס ל־Tailscale בדפדפן.</string>
     <string name="tailscale_login">התחברות ל־Tailscale</string>
     <string name="approval">ממתין לאישור מנהל ה־Tailnet</string>
-    <string name="server_wait">החיבור לשרת הגלריה עדיין לא זמין. יש לבדוק את החיבור ואת הרשאת הגישה לשרת.</string>
+    <string name="server_wait">מחובר ל־Tailscale. שרת הגלריה עדיין לא זמין. האפליקציה תנסה שוב אוטומטית.</string>
     <string name="wrong_tailnet">המכשיר מחובר לרשת Tailscale אחרת. הצטרף לרשת שהוזמנת אליה ואז חבר את האפליקציה מחדש.</string>
     <string name="startup_error">החיבור ל־Tailscale לא נפתח. בדוק את החיבור לאינטרנט ונסה שוב.</string>
     <string name="retry">ניסיון חוזר</string>
     <string name="reset_connection">חיבור מחדש לחשבון</string>
     <string name="reset_prompt">האפליקציה תפתח חיבור חדש שיצריך אישור מנהל מחדש.</string>
     <string name="no_browser">לא נמצא דפדפן שאפשר לפתוח בו את מסך ההתחברות.</string>
+    <string name="send_report">שליחת דיווח ב־WhatsApp</string>
+    <string name="no_whatsapp">לא נמצאה אפליקציית WhatsApp במכשיר.</string>
+    <string name="report_message">דיווח מגלריית הבית\nבעיה: %1$s\nזמן בטלפון (UTC): %2$s</string>
+    <string name="report_certificate_time">תעודת ה־HTTPS מחוץ לתקופת התוקף. כדאי לבדוק את השעון בשרת ובטלפון.</string>
+    <string name="report_tls">החיבור המאובטח לשרת הגלריה נכשל.</string>
+    <string name="report_timeout">שרת הגלריה לא ענה בזמן. כדאי לבדוק שהשירות פועל וששעון השרת מסונכרן.</string>
+    <string name="report_server">המכשיר מחובר ל־Tailscale, אך לא התקבלה תשובה תקינה משרת הגלריה.</string>
+    <string name="gallery_settings">הגדרות</string>
+    <string name="settings_back">חזרה</string>
+    <string name="keep_tailnet_connected">שמירת חיבור Tailscale ברקע</string>
+    <string name="keep_tailnet_description">משאיר את החיבור של גלריית הבית פעיל גם כשסוגרים את האפליקציה.</string>
+    <string name="keep_tailnet_error">לא הצלחנו להפעיל את החיבור ברקע.</string>
+    <string name="tailnet_channel">חיבור Tailscale ברקע</string>
+    <string name="tailnet_notification">חיבור Tailscale ברקע מופעל</string>
+    <string name="photo_selection_unavailable">לא ניתן לקרוא את התמונות שנבחרו. נסה לבחור אותן שוב.</string>
 </resources>
