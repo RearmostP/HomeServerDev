@@ -8,6 +8,7 @@ import subprocess
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from flask import Flask, abort, g, jsonify, request, send_file
 
@@ -457,6 +458,54 @@ def download(photo_id):
 
 
 if __name__ == "__main__":
-    from waitress import serve
-    serve(APP, host="127.0.0.1", port=8000, max_request_body_size=26 * 1024 * 1024,
-          clear_untrusted_proxy_headers=True)
+    from waitress import create_server
+
+    gallery = create_server(
+        APP,
+        host="127.0.0.1",
+        port=8000,
+        max_request_body_size=26 * 1024 * 1024,
+        clear_untrusted_proxy_headers=True,
+    )
+    tailscale = None
+    try:
+        if os.environ.get("GALLERY_TAILSCALE_ROLE") == "1":
+            if LOCAL_HTTP:
+                raise RuntimeError("Tailscale mode requires the HTTPS gallery origin.")
+            origin = urlsplit(ORIGIN)
+            host = origin.hostname
+            if (
+                origin.scheme != "https"
+                or not host
+                or origin.netloc.casefold() != host.casefold()
+                or origin.path
+                or origin.query
+                or origin.fragment
+                or not host.casefold().endswith(".ts.net")
+            ):
+                raise RuntimeError(
+                    "Tailscale mode requires GALLERY_ORIGIN to be the HTTPS .ts.net origin without a path or port."
+                )
+
+            from roleforge import load
+
+            tailscale = load(SERVER / "home-gallery.rfg").tailscale
+            status = tailscale.connect()
+            dns_name = str(status.get("dns_name", "")).rstrip(".")
+            if status.get("state") != "Running" or dns_name.casefold() != host.casefold():
+                raise RuntimeError(
+                    "The RoleForge Tailscale node DNS name does not match GALLERY_ORIGIN."
+                )
+            status = tailscale.proxy.start()
+            if (
+                status.get("proxy_state") != "running"
+                or status.get("listen_port") != 443
+                or status.get("proxy_https") is not True
+            ):
+                raise RuntimeError("The RoleForge HTTPS proxy did not start on port 443.")
+
+        gallery.run()
+    finally:
+        if tailscale is not None:
+            tailscale.disconnect()
+        gallery.close()

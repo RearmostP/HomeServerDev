@@ -30,20 +30,22 @@ python3 build-android.py
 
 ### התקנה אוטומטית ב־Debian
 
-מתוך עותק של המאגר במחשב השרת, כמנהל עם גישת `sudo`, הרץ:
+מתוך עותקים של שני המאגרים באותה תיקיית אב במחשב השרת, כמנהל עם גישת `sudo`, הרץ את הסקריפט מתוך HomeServerDev:
 
 ```bash
 bash install-server.sh
 ```
 
-הסקריפט תומך ב־Debian עם AMD64 או ARM64. הוא מתקין תלויות, בונה את ממשק הדפדפן, מגדיר שירות `systemd` ומפעיל Tailscale Serve. אם המחשב טרם התחבר ל־Tailscale, פתח את קישור ההתחברות שהפקודה תציג. כאשר נדרש אישור מכשיר, יש לאשר אותו ב־Tailscale. כתובת הגלריה נגזרת משם המחשב ב־Tailnet ומודפסת בסיום. כדי להשתמש בשם `home-server`, הגדר אותו כשם המחשב ב־Debian או כשם המכשיר ב־Tailscale.
+הסקריפט תומך ב־Debian עם AMD64 או ARM64. הוא מוריד ומתקין את Wheel המתאים מ־GitHub Release של RoleForge בגרסה 0.2.1: `manylinux_2_34_x86_64` ל־AMD64 ו־`manylinux_2_34_aarch64` ל־ARM64. אם Asset של הארכיטקטורה חסר, ההתקנה נעצרת עם הודעה מפורשת. הסקריפט אינו תלוי במאגר RoleForge מקומי או ב־PyPI. הוא בונה את ממשק הדפדפן ומגדיר שירות `systemd` שמפעיל את הצומת המוטמע. הוא מבקש כתובת HTTPS מלאה ומפתח Tailscale; המפתח נשמר בקובץ מקומי מוגן תחת `/etc/home-gallery/` ואינו נכתב ליומן או למאגר.
+
+החיבור בצד השרת מסופק על ידי RoleForge וה־`tsnet` שלו בלבד: הסקריפט אינו מתקין את `tailscaled`, ואם שירות מערכת ישן קיים הוא עוצר ומבטל אותו. אין שימוש ב־Tailscale Serve. יש להפעיל HTTPS certificates ל־Tailnet בהגדרות Tailscale ולאשר את צומת `home-gallery` אם מופעל Device Approval. כתובת הגלריה היא `https://home-gallery.<tailnet>.ts.net/`; ה־proxy משתמש ב־HTTPS בפורט 443, ולכן ממשק הדפדפן נשאר ב־secure context הדרוש ל־Web Crypto. לקוחות הטלפון נשארים חלק מההגדרה ומשתמשים ב־Tailscale שלהם כדי להגיע לאותה כתובת HTTPS.
 
 קובצי ההגדרה המקומיים נשמרים ב־`/etc/home-gallery/`, והנתונים ב־`/server-storage/`. הרצה חוזרת משתמשת במפתח OPAQUE שכבר נשמר. אם יש נתונים מהתקנה ידנית, שחזר קודם את מפתח OPAQUE המקורי ב־`/etc/home-gallery/opaque.env`, בשורה `OPAQUE_SERVER_SETUP=...`.
 
 ### התקנה ידנית והגדרה של השרת ב־Debian
 
-1. התקן Python 3.10 ומעלה, Node.js 22 ומעלה, npm ו־Tailscale. חבר את מחשב השרת ל־Tailnet הפרטי שלך.
-2. משורש המאגר, בנה את ממשק הדפדפן, צור ערך הגדרה ראשוני ל־OPAQUE והתקן את תלויות Python.
+1. התקן Python 3.10 ומעלה, Node.js 22 ומעלה ו־npm. אין להתקין Tailscale system-wide בשרת; אם `tailscaled` משירות התקנה ישן פעיל, עצור והשבת אותו לפני ההפעלה הידנית.
+2. משורש HomeServerDev, בנה את ממשק הדפדפן, צור ערך הגדרה ראשוני ל־OPAQUE והתקן את תלויות Python ואת Wheel של RoleForge 0.2.1 מה־GitHub Release המתאים לארכיטקטורה.
 
    ```sh
    cd clients/browser
@@ -53,39 +55,38 @@ bash install-server.sh
    cd ../../server
    python3 -m venv .venv
    .venv/bin/python -m pip install -r requirements.txt
+   # AMD64:
+   .venv/bin/python -m pip install --no-deps https://github.com/RearmostP/RoleForge/releases/download/v0.2.1/roleforge-0.2.1-cp310-abi3-manylinux_2_34_x86_64.whl
+   # ARM64 — החלף את הפקודה הקודמת ב:
+   # .venv/bin/python -m pip install --no-deps https://github.com/RearmostP/RoleForge/releases/download/v0.2.1/roleforge-0.2.1-cp310-abi3-manylinux_2_34_aarch64.whl
    ```
 
    שמור את ערך ההגדרה של OPAQUE בסוד ובגיבוי. צור אותו פעם אחת והשתמש בו גם אחרי הפעלה מחדש. החלפתו מבטלת את רישומי האימות הקיימים ועלולה למנוע גישה למפתחות התמונות.
 
-3. צור את תיקיית האחסון ממנה השרת עובד. הפקודה הבאה מקצה אותה למשתמש הנוכחי. אם השרת ירוץ תחת משתמש שירות אחר, הגדר אותו כבעל התיקייה.
+3. ודא שהמשתמש שמריץ את השרת יכול לקרוא את `/etc/home-gallery/tailscale.env`, עם מפתח `TAILSCALE_AUTH_KEY`, וכתוב אותו בהרשאות `0640` לקבוצה של המשתמש. אל תשמור מפתח ב־`.rfg`, בפקודת shell או במאגר. `server/home-gallery.rfg` מגדיר את צומת `home-gallery`, יעד מקומי ב־`127.0.0.1:8000`, HTTPS בפורט 443 ומצב `tsnet` קבוע ב־`/server-storage/tailscale`.
 
    ```sh
    sudo install -d -m 0700 -o "$(id -un)" -g "$(id -gn)" /server-storage
    ```
 
-4. מתוך `server/`, הגדר את כתובת ה־HTTPS המלאה של השרת ב־Tailscale, ללא לוכסן בסוף. החלף את כתובת הדוגמה בכתובת שלך. הדבק את ערך OPAQUE כשהפקודה מבקשת אותו.
+4. מתוך `server/`, הגדר את ה־HTTPS origin המדויק של צומת ה־Tailscale, ללא לוכסן בסוף, ואת ערך OPAQUE שכבר יצרת. יש להפעיל HTTPS certificates ל־Tailnet בהגדרות Tailscale.
 
    ```bash
-   export GALLERY_ORIGIN='https://home-server.example-tailnet.ts.net'
+   export GALLERY_ORIGIN='https://home-gallery.example-tailnet.ts.net'
    read -rsp 'OPAQUE_SERVER_SETUP: ' OPAQUE_SERVER_SETUP
    printf '\n'
    export OPAQUE_SERVER_SETUP
+   export GALLERY_TAILSCALE_ROLE=1
    .venv/bin/python main.py
    ```
 
-5. בחלון נפרד, הפעל Tailscale Serve.
+5. פתח בדפדפן את `GALLERY_ORIGIN` ובחר **יצירת חשבון**. שרת Python מאזין מקומית; ה־Role של RoleForge מקבל בקשות HTTPS דרך ה־Tailnet ומעביר אותן אליו. יש לוודא ששם ה־DNS שה־Role קיבל תואם ל־`GALLERY_ORIGIN`.
 
-   ```sh
-   sudo tailscale serve http://127.0.0.1:8000
-   ```
-
-   פתח בדפדפן את הכתובת שהוגדרה ב־`GALLERY_ORIGIN` ובחר **יצירת חשבון**. שרת Python מאזין ב־`127.0.0.1:8000`, ו־Tailscale Serve מספק את הגישה דרך ה־Tailnet. כל משתמש שמדיניות הגישה של ה־Tailnet מאפשרת לו להגיע לשירות יכול להירשם.
-
-לגיבוי בהעתקת קבצים, עצור את השרת והעתק יחד את מסד SQLite ואת עץ האחסון שב־`/server-storage/`. שמור בנפרד עותק של ערך ההגדרה של OPAQUE.
+לגיבוי בהעתקת קבצים, עצור את השרת והעתק יחד את מסד SQLite ואת עץ האחסון שב־`/server-storage/`, כולל מצב `tsnet` כדי לשמר את זהות הצומת. שמור בנפרד את ערך OPAQUE ואת קובץ מפתח Tailscale באופן מוצפן ומוגן.
 
 ### הפעלה מקומית ב־Windows
 
-בנה את ממשק הדפדפן באותן פקודות npm. מתוך `server/`, הגדר ב־PowerShell את `OPAQUE_SERVER_SETUP` לערך שכבר יצרת, ואז הרץ:
+בנה את ממשק הדפדפן באותן פקודות npm. מתוך `server/`, הגדר ב־PowerShell את `OPAQUE_SERVER_SETUP` לערך שכבר יצרת, ואז הרץ בלי להגדיר `GALLERY_TAILSCALE_ROLE`. `localhost` נשאר נתיב פיתוח מקומי ואינו בודק Tailscale או את פריסת Debian:
 
 ```powershell
 $env:GALLERY_LOCAL_HTTP = '1'
