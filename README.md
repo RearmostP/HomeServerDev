@@ -16,6 +16,10 @@
 | ממשק דפדפן | [`clients/browser/`](clients/browser/) | HTML, CSS ו־JavaScript למסכי הגלריה, העלאה, שיתוף והצפנה בדפדפן. |
 | אפליקציית Android | [`clients/android/`](clients/android/) | Kotlin וממשק הגלריה המשותף לדפדפן, עם חיבור Tailscale מובנה באמצעות Go ו־`tsnet`. הוראות הבנייה נמצאות ב־[README של האפליקציה](clients/android/README.md). |
 
+### ניווט בקוד השרת
+
+`server/main.py` הוא נקודת הכניסה. ההרכבה וההגדרות נמצאות ב־`server/gallery/app.py` וב־`server/gallery/configuration.py`; אתחול Waitress ו־RoleForge/Tailscale ב־`server/gallery/server_runtime.py` וב־`server/gallery/tailscale.py`. מסלולי HTTP מקובצים תחת `server/gallery/routes/`: `authentication.py` לאימות ול־sessions, `account.py` למכשירים וליציאה, `albums.py` לאלבומים ולשיתוף, ו־`photos.py` לתמונות. שירותים משותפים נמצאים תחת `server/gallery/services/`: `username.py` לכללי שם המשתמש, `authorization.py` להרשאות אלבום, `photo_storage.py` ו־`storage.py` לנתיבי הקבצים ותיקיית הנתונים, `database.py` ל־SQLite, `opaque.py` לאימות OPAQUE דרך Node, ו־`request_utils.py` לבדיקת בקשות.
+
 ### בניית APK לכתובת השרת שלך
 
 מתוך שורש המאגר, על Windows או Linux עם מעבד x86-64 ו־Python 3.10 ומעלה, הרץ:
@@ -63,7 +67,7 @@ bash install-server.sh
 
    שמור את ערך ההגדרה של OPAQUE בסוד ובגיבוי. צור אותו פעם אחת והשתמש בו גם אחרי הפעלה מחדש. החלפתו מבטלת את רישומי האימות הקיימים ועלולה למנוע גישה למפתחות התמונות.
 
-3. ודא שהמשתמש שמריץ את השרת יכול לקרוא את `/etc/home-gallery/tailscale.env`, עם מפתח `TAILSCALE_AUTH_KEY`, וכתוב אותו בהרשאות `0640` לקבוצה של המשתמש. אל תשמור מפתח ב־`.rfg`, בפקודת shell או במאגר. `server/home-gallery.rfg` מגדיר את צומת `home-gallery`, יעד מקומי ב־`127.0.0.1:8000`, HTTPS בפורט 443 ומצב `tsnet` קבוע ב־`/server-storage/tailscale`.
+3. ודא שהמשתמש שמריץ את השרת יכול לקרוא את `/etc/home-gallery/tailscale.env`, עם מפתח `TAILSCALE_AUTH_KEY`, וכתוב אותו בהרשאות `0640` לקבוצה של המשתמש. אל תשמור מפתח ב־`.rfg`, בפקודת shell או במאגר. `server/home-gallery-host-settings.rfg` מגדיר את צומת `home-gallery`, יעד מקומי ב־`127.0.0.1:8000`, HTTPS בפורט 443 ומצב `tsnet` קבוע ב־`/server-storage/tailscale`.
 
    ```sh
    sudo install -d -m 0700 -o "$(id -un)" -g "$(id -gn)" /server-storage
