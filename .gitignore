@@ -1,5 +1,8 @@
 server/.venv/
 server/server-storage/
+server/.env
+server/tailscale.env
+server/.roleforge/
 **/__pycache__/
 clients/browser/node_modules/
 clients/browser/dist/

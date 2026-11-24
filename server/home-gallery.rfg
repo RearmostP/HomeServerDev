@@ -1,0 +1,14 @@
+@role Tailscale
+env_file = "/etc/home-gallery/tailscale.env"
+
+connect.settings {
+  hostname = "home-gallery"
+  auth_key = ""
+  state_dir = "/server-storage/tailscale"
+}
+
+proxy.settings {
+  https = true
+  target = "http://127.0.0.1:8000"
+  listen_port = 443
+}
