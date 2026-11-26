@@ -37,12 +37,28 @@ python3 build-android.py
 מתוך עותקים של שני המאגרים באותה תיקיית אב במחשב השרת, כמנהל עם גישת `sudo`, הרץ את הסקריפט מתוך HomeServerDev:
 
 ```bash
-bash install-server.sh
+bash scripts/install-server.sh
 ```
 
 הסקריפט תומך ב־Debian עם AMD64 או ARM64. הוא מוריד ומתקין את Wheel המתאים מ־GitHub Release של RoleForge בגרסה 0.2.1: `manylinux_2_34_x86_64` ל־AMD64 ו־`manylinux_2_34_aarch64` ל־ARM64. אם Asset של הארכיטקטורה חסר, ההתקנה נעצרת עם הודעה מפורשת. הסקריפט אינו תלוי במאגר RoleForge מקומי או ב־PyPI. הוא בונה את ממשק הדפדפן ומגדיר שירות `systemd` שמפעיל את הצומת המוטמע. הוא מבקש כתובת HTTPS מלאה ומפתח Tailscale; המפתח נשמר בקובץ מקומי מוגן תחת `/etc/home-gallery/` ואינו נכתב ליומן או למאגר.
 
-החיבור בצד השרת מסופק על ידי RoleForge וה־`tsnet` שלו בלבד: הסקריפט אינו מתקין את `tailscaled`, ואם שירות מערכת ישן קיים הוא עוצר ומבטל אותו. אין שימוש ב־Tailscale Serve. יש להפעיל HTTPS certificates ל־Tailnet בהגדרות Tailscale ולאשר את צומת `home-gallery` אם מופעל Device Approval. כתובת הגלריה היא `https://home-gallery.<tailnet>.ts.net/`; ה־proxy משתמש ב־HTTPS בפורט 443, ולכן ממשק הדפדפן נשאר ב־secure context הדרוש ל־Web Crypto. לקוחות הטלפון נשארים חלק מההגדרה ומשתמשים ב־Tailscale שלהם כדי להגיע לאותה כתובת HTTPS.
+ההתקנה הראשונית מתקינה גם wrapper יציב ב־`/usr/local/bin/update-version` ואת הגדרות העדכון הלא־סודיות ב־`/etc/home-gallery/update.conf`. זו הפקודה החד־פעמית שמתקינה אותם (כחלק מהתקנת השרת):
+
+```bash
+bash scripts/install-server.sh
+```
+
+לאחר מכן, לעדכון שגרתי של האפליקציה הרץ מכל תיקייה:
+
+```bash
+sudo update-version
+```
+
+העדכון משתמש ב־`scripts/update-server.sh`, לא במתקין הראשוני. הוא בודק שה־checkout השמור קיים, ש־`origin` הוא מאגר HomeServerDev הצפוי, ושהענף המקומי הוא הענף שהוגדר עם upstream מתאים. הוא מסרב להמשיך אם יש שינויים מקומיים, חסר upstream או העדכון אינו fast-forward; הוא משתמש רק ב־fast-forward ואינו מבצע reset, merge שאינו fast-forward או השלכה של עבודה מקומית. Git מופעל בזהות בעל checkout. העדכון בונה release חדש, משתמש מחדש ב־Node.js ובמטמוני התלויות כל עוד הם תואמים, מפעיל את השירות ובודק את `/health`. במקרה של כשל בהפעלה או בבדיקת הבריאות הוא משחזר את קובץ השירות וה־release הקודם ומשאיר את שני ה־releases זמינים לבדיקה.
+
+העדכון משאיר ללא שינוי את `/etc/home-gallery/`, את `/server-storage/` (כולל מסד הנתונים ומצב הצומת של Tailscale), ואת `GALLERY_ORIGIN` השמור. הוא אינו מתקין מחדש חבילות מערכת או מוריד Node.js בכל עדכון. אם ה־checkout מלוכלך, יש לבדוק ולשמור את השינויים לפני העדכון; הסקריפט לא ינסה לפתור אותם אוטומטית.
+
+החיבור בצד השרת מסופק על ידי RoleForge וה־`tsnet` שלו בלבד: המתקין הראשוני אינו מתקין את `tailscaled`, ואם שירות מערכת ישן קיים הוא עוצר ומבטל אותו. אין שימוש ב־Tailscale Serve. יש להפעיל HTTPS certificates ל־Tailnet בהגדרות Tailscale ולאשר את צומת `home-gallery` אם מופעל Device Approval. כתובת הגלריה היא `https://home-gallery.<tailnet>.ts.net/`; ה־proxy משתמש ב־HTTPS בפורט 443, ולכן ממשק הדפדפן נשאר ב־secure context הדרוש ל־Web Crypto. לקוחות הטלפון נשארים חלק מההגדרה ומשתמשים ב־Tailscale שלהם כדי להגיע לאותה כתובת HTTPS.
 
 קובצי ההגדרה המקומיים נשמרים ב־`/etc/home-gallery/`, והנתונים ב־`/server-storage/`. הרצה חוזרת משתמשת במפתח OPAQUE שכבר נשמר. אם יש נתונים מהתקנה ידנית, שחזר קודם את מפתח OPAQUE המקורי ב־`/etc/home-gallery/opaque.env`, בשורה `OPAQUE_SERVER_SETUP=...`.
 

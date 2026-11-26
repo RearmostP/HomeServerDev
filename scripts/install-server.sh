@@ -2,16 +2,31 @@
 set -Eeuo pipefail
 umask 022
 
-repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 install_dir=/opt/home-gallery
 config_dir=/etc/home-gallery
 state_dir=/server-storage
 service=home-gallery
 roleforge_version=0.2.1
 roleforge_release=https://github.com/RearmostP/RoleForge/releases/download/v${roleforge_version}
+expected_remote=https://github.com/RearmostP/HomeServerDev.git
 
 die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 step() { printf '\n%s\n' "$*"; }
+
+normalize_repository_remote() {
+    local remote=${1%.git}
+    case "$remote" in
+        https://github.com/RearmostP/HomeServerDev|https://github.com/rearmostp/homeserverdev|\
+        git@github.com:RearmostP/HomeServerDev|git@github.com:rearmostp/homeserverdev|\
+        ssh://git@github.com/RearmostP/HomeServerDev|ssh://git@github.com/rearmostp/homeserverdev)
+            printf '%s\n' "$expected_remote"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
 
 [[ $EUID -ne 0 ]] || die "Run this as a regular user with sudo access."
 [[ -t 0 ]] || die "Run from an interactive terminal for server configuration."
@@ -20,6 +35,19 @@ source /etc/os-release
 [[ ${ID:-} == debian && ${VERSION_CODENAME:-} =~ ^[a-z]+$ ]] || die "This installer requires Debian."
 [[ -f "$repo/server/main.py" && -f "$repo/clients/browser/package-lock.json" ]] ||
     die "Run the installer from the project checkout."
+checkout_owner=$(id -un)
+[[ $repo != *$'\n'* && $checkout_owner != *$'\n'* ]] ||
+    die "The checkout path and owner must not contain newlines."
+checkout_remote=$(git -C "$repo" remote get-url origin 2>/dev/null) ||
+    die "The checkout must have an origin remote for HomeServerDev."
+[[ $(normalize_repository_remote "$checkout_remote") == "$expected_remote" ]] ||
+    die "The checkout origin is not the expected HomeServerDev repository."
+checkout_branch=$(git -C "$repo" branch --show-current)
+[[ -n $checkout_branch ]] || die "The checkout must be on a branch."
+checkout_upstream=$(git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null) ||
+    die "The checkout branch must have a configured upstream."
+[[ $checkout_upstream == "origin/$checkout_branch" ]] ||
+    die "The checkout branch upstream must be origin/$checkout_branch."
 case "$(dpkg --print-architecture)" in
     amd64)
         node_arch=x64
@@ -44,6 +72,9 @@ sudo apt-get install -y ca-certificates curl python3 python3-venv xz-utils
 python3 -c 'import sys; assert sys.version_info >= (3, 10), "Python 3.10 or newer required"'
 
 gallery_origin=${GALLERY_ORIGIN:-}
+if [[ -z $gallery_origin ]] && sudo test -s "$config_dir/gallery.env"; then
+    gallery_origin=$(sudo sed -n 's/^GALLERY_ORIGIN=//p' "$config_dir/gallery.env" | head -n 1)
+fi
 if [[ -z $gallery_origin ]]; then
     read -r -p 'Gallery HTTPS origin (https://home-gallery.<tailnet>.ts.net): ' gallery_origin
 fi
@@ -190,5 +221,35 @@ for _ in {1..15}; do
 done
 [[ $ready == true ]] || die "The service did not respond. Inspect: sudo journalctl -u home-gallery -n 50"
 
+cat > "$scratch/update.conf" <<CONFIG
+CHECKOUT_PATH=$repo
+CHECKOUT_OWNER=$checkout_owner
+EXPECTED_REMOTE=$expected_remote
+UPSTREAM_REMOTE=origin
+UPSTREAM_BRANCH=$checkout_branch
+CONFIG
+sudo install -o root -g root -m 0644 "$scratch/update.conf" "$config_dir/update.conf"
+cat > "$scratch/update-version" <<'WRAPPER'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ $EUID -ne 0 ]]; then
+    exec sudo -- /usr/local/bin/update-version "$@"
+fi
+[[ $# -eq 0 ]] || { printf 'Usage: update-version\n' >&2; exit 2; }
+
+config=/etc/home-gallery/update.conf
+[[ -r $config ]] || { printf 'Missing updater configuration: %s\n' "$config" >&2; exit 1; }
+checkout=$(sed -n 's/^CHECKOUT_PATH=//p' "$config")
+[[ -n $checkout && -f "$checkout/scripts/update-server.sh" ]] || {
+    printf 'Saved HomeServerDev checkout or updater is unavailable.\n' >&2
+    exit 1
+}
+exec /bin/bash "$checkout/scripts/update-server.sh" --config "$config"
+WRAPPER
+sudo install -d -o root -g root -m 0755 /usr/local/bin
+sudo install -o root -g root -m 0755 "$scratch/update-version" /usr/local/bin/update-version
+
 printf '\nOpen the gallery from the tailnet: %s/\n' "$gallery_origin"
+printf 'Routine updates: sudo update-version\n'
 printf 'Service logs: sudo journalctl -u home-gallery -f\n'

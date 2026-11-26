@@ -55,7 +55,7 @@ BASELINE_ROUTES = {
 
 
 def installer_server_files():
-    installer = (REPOSITORY_ROOT / "install-server.sh").read_text(
+    installer = (REPOSITORY_ROOT / "scripts" / "install-server.sh").read_text(
         encoding="utf-8"
     )
     expected_copy_commands = (
