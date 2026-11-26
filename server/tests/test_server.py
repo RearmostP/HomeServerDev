@@ -45,6 +45,8 @@ BASELINE_ROUTES = {
     ("GET", "/api/users/<username>/key"),
     ("GET", "/app.css"),
     ("GET", "/app.js"),
+    ("GET", "/health"),
+    ("GET", "/metrics"),
 }
 
 

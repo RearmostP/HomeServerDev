@@ -2,6 +2,7 @@
 
 import secrets
 import time
+from flask import abort
 
 from flask import Blueprint, g, request, send_file
 
@@ -36,19 +37,18 @@ def create_photo_blueprint(
         if content is None:
             abort(400)
 
+        # Read content first (into memory - max 26MB per config)
+        ciphertext = content.read()
+        if len(ciphertext) < 17:
+            abort(400)
+
         photo_id = secrets.token_hex(16)
-        path = photo_storage.photo_file(owner, number, photo_id)
-        if not path.parent.is_dir():
-            abort(404)
-        with path.open("xb") as output:
-            try:
-                content.save(output)
-                if output.tell() < 17:
-                    abort(400)
-            except BaseException:
-                output.close()
-                path.unlink()
-                raise
+
+        # Atomically write file with per-album lock
+        try:
+            path = photo_storage.upload_photo_atomic(owner, number, photo_id, ciphertext)
+        except FileExistsError:
+            abort(409, "Photo ID collision, please retry")
 
         try:
             with database.connection(write=True) as connection:
@@ -68,7 +68,8 @@ def create_photo_blueprint(
                     (photo_id, owner, number, metadata, int(time.time())),
                 )
         except BaseException:
-            path.unlink()
+            # Clean up file on DB failure
+            path.unlink(missing_ok=True)
             raise
         return {"id": photo_id}, 201
 

@@ -1,6 +1,11 @@
 """Validate JSON and form fields and build standard API responses."""
 
+import hashlib
 from flask import abort, jsonify, request
+
+
+def token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def json_body() -> dict:

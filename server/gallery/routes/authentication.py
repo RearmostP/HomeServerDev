@@ -1,6 +1,5 @@
 """Handle registration, login challenges, and session creation."""
 
-import hashlib
 import re
 import secrets
 import sqlite3
@@ -12,21 +11,26 @@ from gallery.configuration import Settings
 from gallery.services.database import Database
 from gallery.services.opaque import run_opaque_operation
 from gallery.services.photo_storage import PhotoStorage
-from gallery.services.request_utils import json_body, required_field
+from gallery.services.rate_limiter import get_auth_rate_limiter
+from gallery.services.request_utils import json_body, required_field, token_digest
+from gallery.services.session_cache import get_session_cache
 from gallery.services.username import validate_username
-
-
-SESSION_SECONDS = 12 * 3600
-
-
-def token_digest(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def create_authentication_blueprint(
     database: Database, photo_storage: PhotoStorage, settings: Settings
 ) -> Blueprint:
     routes = Blueprint("authentication", __name__)
+    rate_limiter = get_auth_rate_limiter(
+        max_requests=settings.auth_rate_limit_requests,
+        window_seconds=settings.auth_rate_limit_window_seconds,
+        max_keys=settings.auth_rate_limit_max_keys,
+    )
+    session_cache = get_session_cache(
+        database,
+        max_size=settings.session_cache_max_size,
+        ttl_seconds=settings.session_cache_ttl_seconds,
+    )
 
     def start_challenge(username: str, kind: str, state: str) -> str:
         token = secrets.token_urlsafe(32)
@@ -55,24 +59,13 @@ def create_authentication_blueprint(
         return challenge
 
     def apply_rate_limit() -> None:
-        now = int(time.time())
         address = (
             request.headers.get("Tailscale-User-Login")
             or request.remote_addr
             or "local"
         )
-        with database.connection(write=True) as connection:
-            connection.execute(
-                "DELETE FROM auth_attempts WHERE attempted <= ?", (now - 60,)
-            )
-            attempts = connection.execute(
-                "SELECT count(*) FROM auth_attempts WHERE ip = ?", (address,)
-            ).fetchone()[0]
-            if attempts >= 30:
-                abort(429)
-            connection.execute(
-                "INSERT INTO auth_attempts VALUES (?, ?)", (address, now)
-            )
+        if not rate_limiter.check_limit(address):
+            abort(429)
 
     @routes.post("/api/auth/register/start")
     def register_start():
@@ -164,6 +157,7 @@ def create_authentication_blueprint(
         username = challenge["username"]
         now = int(time.time())
         token = secrets.token_urlsafe(32)
+        session_seconds = settings.session_seconds
         with database.connection(write=True) as connection:
             account = connection.execute(
                 "SELECT private_key FROM users WHERE username = ?", (username,)
@@ -187,14 +181,17 @@ def create_authentication_blueprint(
             connection.execute("DELETE FROM sessions WHERE expires <= ?", (now,))
             connection.execute(
                 "INSERT INTO sessions VALUES (?, ?, ?)",
-                (token_digest(token), device_id, now + SESSION_SECONDS),
+                (token_digest(token), device_id, now + session_seconds),
             )
+
+        # Cache the new session
+        session_cache.set(token, username, device_id, now + session_seconds)
 
         response = jsonify(privateKey=account["private_key"], username=username)
         response.set_cookie(
             "gallery_session",
             token,
-            max_age=SESSION_SECONDS,
+            max_age=session_seconds,
             secure=not settings.local_http,
             httponly=True,
             samesite="Strict",

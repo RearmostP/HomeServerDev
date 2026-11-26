@@ -3,7 +3,7 @@
 from flask import Blueprint, g, request
 
 from gallery.configuration import Settings
-from gallery.routes.authentication import token_digest
+from gallery.services.request_utils import token_digest
 from gallery.services.database import Database
 from gallery.services.request_utils import (
     json_body,

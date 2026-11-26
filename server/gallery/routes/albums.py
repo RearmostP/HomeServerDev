@@ -20,13 +20,21 @@ def create_album_blueprint(
         with database.connection() as connection:
             rows = connection.execute(
                 """
-                SELECT albums.*, wrapped_key,
-                    (SELECT count(*) FROM photos
-                     WHERE photos.owner=albums.owner AND photos.number=albums.number) AS count,
-                    (SELECT count(*) FROM access AS peers
-                     WHERE peers.owner=albums.owner AND peers.number=albums.number
-                       AND peers.username<>albums.owner) AS shared
-                FROM albums JOIN access USING(owner, number)
+                WITH photo_counts AS (
+                    SELECT owner, number, count(*) as cnt
+                    FROM photos GROUP BY owner, number
+                ),
+                share_counts AS (
+                    SELECT owner, number, count(*) as cnt
+                    FROM access WHERE username <> owner GROUP BY owner, number
+                )
+                SELECT albums.*, access.wrapped_key,
+                       COALESCE(pc.cnt, 0) as count,
+                       COALESCE(sc.cnt, 0) as shared
+                FROM albums
+                JOIN access ON albums.owner=access.owner AND albums.number=access.number
+                LEFT JOIN photo_counts pc ON albums.owner=pc.owner AND albums.number=pc.number
+                LEFT JOIN share_counts sc ON albums.owner=sc.owner AND albums.number=sc.number
                 WHERE access.username=?
                 ORDER BY albums.owner<>?, albums.number, albums.owner
                 """,
