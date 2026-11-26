@@ -1,6 +1,6 @@
 """Handle account devices, device revocation, and logout."""
 
-from flask import Blueprint, g, request
+from flask import Blueprint, g, request, abort
 
 from gallery.configuration import Settings
 from gallery.services.database import Database
@@ -51,14 +51,20 @@ def create_account_blueprint(database: Database, settings: Settings) -> Blueprin
         device_id = required_field(data, "id", 64)
         username = g.account["username"]
         with database.connection(write=True) as connection:
-            # Get sessions for this device to invalidate cache
+            # Get sessions for this device (only if device belongs to current user)
             sessions = connection.execute(
-                "SELECT token FROM sessions WHERE device = ?", (device_id,)
+                """SELECT s.token FROM sessions s
+                   JOIN devices d ON s.device = d.id
+                   WHERE s.device = ? AND d.username = ?""",
+                (device_id, username),
             ).fetchall()
-            connection.execute(
+            # Delete device (only if it belongs to current user)
+            result = connection.execute(
                 "DELETE FROM devices WHERE id=? AND username=?",
                 (device_id, username),
             )
+            if result.rowcount == 0:
+                abort(404, "Device not found")
         # Invalidate all sessions for the revoked device
         for session in sessions:
             session_cache.invalidate(session["token"])

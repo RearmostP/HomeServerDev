@@ -43,11 +43,13 @@ if (isDaemon) {
   const rl = createInterface({ input: stdin, output: stdout, terminal: false });
   for await (const line of rl) {
     if (!line.trim()) continue;
+    let request;
     try {
-      const request = JSON.parse(line);
+      request = JSON.parse(line);
       const response = await handleRequest(request);
       stdout.write(JSON.stringify(response) + "\n");
     } catch (e) {
+      // request may be undefined if JSON.parse failed
       stdout.write(JSON.stringify({ id: request?.id ?? null, error: "Invalid request" }) + "\n");
     }
   }
