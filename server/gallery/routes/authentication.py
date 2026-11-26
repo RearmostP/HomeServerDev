@@ -14,7 +14,10 @@ from gallery.services.photo_storage import PhotoStorage
 from gallery.services.rate_limiter import get_auth_rate_limiter
 from gallery.services.request_utils import json_body, required_field, token_digest
 from gallery.services.session_cache import get_session_cache
-from gallery.services.username import validate_username
+from gallery.services.username import validate_username, is_username_taken_case_insensitive
+
+
+USERNAME_TAKEN_MESSAGE = "שם המשתמש כבר תפוס. בחר שם אחר."
 
 
 def create_authentication_blueprint(
@@ -72,6 +75,8 @@ def create_authentication_blueprint(
         apply_rate_limit()
         data = json_body()
         username = validate_username(data.get("username"))
+        if is_username_taken_case_insensitive(database, username):
+            return {"error": USERNAME_TAKEN_MESSAGE, "code": "username_taken"}, 409
         email = required_field(data, "email", 254).strip().lower()
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
             abort(400, "כתובת מייל לא תקינה")
@@ -117,9 +122,12 @@ def create_authentication_blueprint(
                     "INSERT INTO access VALUES (?, 1, ?, ?)",
                     (username, username, required_field(data, "albumKey")),
                 )
-                photo_storage.create_album_directory(username, 1)
         except sqlite3.IntegrityError:
+            if is_username_taken_case_insensitive(database, username):
+                return {"error": USERNAME_TAKEN_MESSAGE, "code": "username_taken"}, 409
             abort(409, "שם המשתמש או המייל כבר קיימים")
+        # Create album directory after successful transaction commit
+        photo_storage.create_album_directory(username, 1)
         return {"ok": True}, 201
 
     @routes.post("/api/auth/login/start")

@@ -12,9 +12,17 @@
   <main id="auth" class="auth">
     <form id="credentials">
       <h1>גלריית הבית</h1>
-      <label>שם משתמש<input name="username" autocomplete="username" required pattern="[a-z][a-z0-9_]{2,23}"></label>
+      <label>שם משתמש
+        <input name="username" autocomplete="username" required pattern="[A-Za-z][A-Za-z0-9_]{2,23}" aria-describedby="username-hint username-error">
+        <small id="username-hint">3–24 תווים; מתחיל באות אנגלית, ומכיל רק אותיות אנגליות, ספרות או קו תחתון. שמות התקנים שמורים של Windows אינם מותרים (CON, PRN, AUX, NUL, COM1–COM9 ו-LPT1–LPT9).</small>
+        <small id="username-error" class="field-error" hidden></small>
+      </label>
       <label id="email-field" hidden>מייל<input name="email" type="email" autocomplete="email"></label>
-      <label>סיסמה<input name="password" type="password" autocomplete="current-password" required></label>
+      <label>סיסמה
+        <input name="password" type="password" autocomplete="current-password" required aria-describedby="password-hint password-error">
+        <small id="password-hint" hidden>בהרשמה נדרשת סיסמה באורך 8 תווים לפחות.</small>
+        <small id="password-error" class="field-error" hidden></small>
+      </label>
       <button id="submit-auth" class="primary">כניסה</button>
       <button type="button" id="toggle-auth">יצירת חשבון</button>
     </form>

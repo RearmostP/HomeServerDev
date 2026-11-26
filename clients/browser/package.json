@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild app.js --bundle --format=esm --outfile=dist/app.js"
+    "build": "esbuild app.js --bundle --format=esm --outfile=dist/app.js",
+    "test": "node --test"
   },
   "dependencies": {
     "@serenity-kit/opaque": "1.1.0"

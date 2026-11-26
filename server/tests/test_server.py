@@ -22,7 +22,11 @@ from gallery.configuration import Settings
 from gallery.server_runtime import serve
 from gallery.services.database import Database
 from gallery.services.storage import default_storage_root
-from gallery.services.username import WINDOWS_RESERVED_DEVICE_NAMES
+from gallery.services.username import (
+    WINDOWS_RESERVED_DEVICE_NAMES,
+    is_username_taken_case_insensitive,
+    validate_username,
+)
 from gallery.tailscale import tailscale_connection
 
 
@@ -432,6 +436,193 @@ class ServerTests(unittest.TestCase):
             )
             self.assertEqual(app_check.returncode, 0, app_check.stderr)
             self.assertTrue((storage / "gallery.sqlite3").is_file())
+
+    def test_username_validation_allows_mixed_case(self):
+        """Usernames with uppercase letters should be accepted."""
+        valid_usernames = [
+            "Alice",
+            "ALICE",
+            "AlIcE",
+            "User_Name",
+            "User123",
+            "UsEr_123",
+            "Aa1",  # minimum length 3
+            "A" + "a" * 23,  # maximum length 24
+        ]
+        for username in valid_usernames:
+            with self.subTest(username=username):
+                self.assertEqual(validate_username(username), username)
+
+    def test_username_validation_rejects_invalid_first_char(self):
+        """Usernames must start with an ASCII letter."""
+        invalid_usernames = [
+            "1user",  # starts with digit
+            "_user",  # starts with underscore
+            "-user",  # starts with hyphen
+            " user",  # starts with space
+        ]
+        for username in invalid_usernames:
+            with self.subTest(username=username):
+                with self.assertRaises(Exception):  # abort(400)
+                    validate_username(username)
+
+    def test_username_validation_rejects_windows_reserved_case_insensitive(self):
+        """Windows reserved device names should be rejected case-insensitively."""
+        for reserved in WINDOWS_RESERVED_DEVICE_NAMES:
+            for variant in [reserved, reserved.upper(), reserved.capitalize(), reserved.title()]:
+                with self.subTest(username=variant):
+                    with self.assertRaises(Exception):  # abort(400)
+                        validate_username(variant)
+
+    def test_username_case_insensitive_duplicate_check(self):
+        """Case-insensitive duplicate usernames should be detected."""
+        database = self.application.extensions["gallery_database"]
+        with database.connection(write=True) as connection:
+            connection.execute(
+                "INSERT INTO users VALUES (?, ?, ?, ?, ?)",
+                ("Alice", "alice@example.com", "record", "public", "private"),
+            )
+        # Should detect case-insensitive duplicate
+        self.assertTrue(is_username_taken_case_insensitive(database, "alice"))
+        self.assertTrue(is_username_taken_case_insensitive(database, "ALICE"))
+        self.assertTrue(is_username_taken_case_insensitive(database, "AlIcE"))
+        # Different username should not be detected
+        self.assertFalse(is_username_taken_case_insensitive(database, "bob"))
+
+    def test_registration_rejects_case_insensitive_duplicate(self):
+        """Registration should reject case-insensitive duplicate usernames."""
+        database = self.application.extensions["gallery_database"]
+        with database.connection(write=True) as connection:
+            connection.execute(
+                "INSERT INTO users VALUES (?, ?, ?, ?, ?)",
+                ("Alice", "alice@example.com", "record", "public", "private"),
+            )
+        with patch(
+            "gallery.routes.authentication.run_opaque_operation",
+            return_value={},
+        ):
+            response = self.post_json(
+                "/api/auth/register/start",
+                {
+                    "username": "alice",  # lowercase duplicate
+                    "email": "different@example.com",
+                    "registrationRequest": "registration-request",
+                },
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json["code"], "username_taken")
+        self.assertEqual(response.json["error"], "שם המשתמש כבר תפוס. בחר שם אחר.")
+
+    def test_registration_finish_returns_username_taken_for_uniqueness_conflict(self):
+        """A username collision after registration starts uses the same API error."""
+        with patch(
+            "gallery.routes.authentication.run_opaque_operation",
+            return_value={},
+        ):
+            registration = self.post_json(
+                "/api/auth/register/start",
+                {
+                    "username": "raceuser",
+                    "email": "raceuser@example.com",
+                    "registrationRequest": "registration-request",
+                },
+            )
+        self.assertEqual(registration.status_code, 200)
+
+        database = self.application.extensions["gallery_database"]
+        with database.connection(write=True) as connection:
+            connection.execute(
+                "INSERT INTO users VALUES (?, ?, ?, ?, ?)",
+                ("RACEUSER", "other@example.com", "record", "public", "private"),
+            )
+
+        with patch(
+            "gallery.routes.authentication.run_opaque_operation",
+            return_value={},
+        ):
+            response = self.post_json(
+                "/api/auth/register/finish",
+                {
+                    "challenge": registration.json["challenge"],
+                    "registrationRecord": "registration-record",
+                    "publicKey": "public-key",
+                    "privateKey": "private-key",
+                    "albumKey": "first-album-key",
+                },
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json["code"], "username_taken")
+        self.assertEqual(response.json["error"], "שם המשתמש כבר תפוס. בחר שם אחר.")
+
+    def test_invalid_username_error_explains_actual_rules(self):
+        response = self.post_json(
+            "/api/auth/register/start",
+            {
+                "username": "1alice",
+                "email": "alice@example.com",
+                "registrationRequest": "registration-request",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("3–24", response.json["error"])
+        self.assertIn("אות אנגלית", response.json["error"])
+        self.assertIn("Windows", response.json["error"])
+
+    def test_password_minimum_length_eight_characters(self):
+        """Passwords of 8 characters should be accepted during registration."""
+        with patch(
+            "gallery.routes.authentication.run_opaque_operation",
+            side_effect=[{}, {}, {"serverLoginState": "login-state", "loginResponse": "response"}, {}],
+        ):
+            # Register with 8-character password
+            registration = self.post_json(
+                "/api/auth/register/start",
+                {
+                    "username": "testuser",
+                    "email": "testuser@example.com",
+                    "registrationRequest": "registration-request",
+                },
+            )
+            self.assertEqual(registration.status_code, 200)
+            completed_registration = self.post_json(
+                "/api/auth/register/finish",
+                {
+                    "challenge": registration.json["challenge"],
+                    "registrationRecord": "registration-record",
+                    "publicKey": "public-key",
+                    "privateKey": "private-key",
+                    "albumKey": "first-album-key",
+                },
+            )
+            self.assertEqual(completed_registration.status_code, 201)
+
+    def test_password_longer_than_eight_characters(self):
+        """Passwords longer than 8 characters should continue to work."""
+        with patch(
+            "gallery.routes.authentication.run_opaque_operation",
+            side_effect=[{}, {}, {"serverLoginState": "login-state", "loginResponse": "response"}, {}],
+        ):
+            # Register with 20-character password
+            registration = self.post_json(
+                "/api/auth/register/start",
+                {
+                    "username": "longpass",
+                    "email": "longpass@example.com",
+                    "registrationRequest": "registration-request",
+                },
+            )
+            self.assertEqual(registration.status_code, 200)
+            completed_registration = self.post_json(
+                "/api/auth/register/finish",
+                {
+                    "challenge": registration.json["challenge"],
+                    "registrationRecord": "registration-record",
+                    "publicKey": "public-key",
+                    "privateKey": "private-key",
+                    "albumKey": "first-album-key",
+                },
+            )
+            self.assertEqual(completed_registration.status_code, 201)
 
 
 if __name__ == "__main__":

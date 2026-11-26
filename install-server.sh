@@ -96,7 +96,7 @@ mkdir -p "$release/server" "$release/clients/browser" "$release/node"
 cp "$repo"/server/main.py "$release/server/"
 cp -R "$repo"/server/gallery "$release/server/"
 cp "$repo"/server/{requirements.txt,home-gallery-host-settings.rfg} "$release/server/"
-cp "$repo"/clients/browser/{app.js,app.css,crypto.js,index.html,opaque-server.mjs,package.json,package-lock.json} "$release/clients/browser/"
+cp "$repo"/clients/browser/{app.js,app.css,auth-form.js,crypto.js,index.html,opaque-server.mjs,package.json,package-lock.json} "$release/clients/browser/"
 
 node_base=https://nodejs.org/dist/latest-v22.x
 fetch "$node_base/SHASUMS256.txt" "$scratch/SHASUMS256.txt"

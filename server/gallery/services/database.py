@@ -53,6 +53,8 @@ CREATE INDEX IF NOT EXISTS access_username ON access(username);
 CREATE INDEX IF NOT EXISTS access_owner_number ON access(owner, number);
 CREATE INDEX IF NOT EXISTS photos_owner_number ON photos(owner, number);
 CREATE INDEX IF NOT EXISTS challenges_expires ON challenges(expires);
+-- Case-insensitive username uniqueness (ASCII usernames, NOCASE collation is correct)
+CREATE UNIQUE INDEX IF NOT EXISTS users_username_nocase ON users(username COLLATE NOCASE);
 """
 
 
@@ -92,7 +94,16 @@ class Database:
 
     def initialize(self) -> None:
         with self.connection() as connection:
-            connection.executescript(SCHEMA)
+            try:
+                connection.executescript(SCHEMA)
+            except sqlite3.OperationalError as e:
+                if "users_username_nocase" in str(e) and "UNIQUE constraint failed" in str(e):
+                    raise RuntimeError(
+                        "Database contains case-insensitive duplicate usernames. "
+                        "Cannot create case-insensitive unique index. "
+                        "Resolve duplicates manually before upgrading."
+                    ) from e
+                raise
             # Initialize one-time pragmas (WAL mode)
             if not self._pragmas_initialized:
                 _initialize_database_pragmas(connection)

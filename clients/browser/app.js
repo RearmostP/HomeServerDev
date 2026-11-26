@@ -1,5 +1,6 @@
 import * as opaque from "@serenity-kit/opaque";
 import { generateIdentity, openIdentity, newAlbumKey, wrapAlbumKey, openAlbumKey, encryptPhoto, openPhoto, imageTypes } from "./crypto.js";
+import { handleAuthError, updateAuthField, submitCredentials } from "./auth-form.js";
 
 const byId = id => document.getElementById(id);
 const items = byId("items");
@@ -40,6 +41,7 @@ async function api(path, payload, binary = false) {
     const error = await response.json().catch(() => ({}));
     const failure = new Error(error.error || "הפעולה נכשלה");
     failure.status = response.status;
+    failure.code = error.code;
     throw failure;
   }
   return binary ? response.arrayBuffer() : response.json();
@@ -59,14 +61,29 @@ function node(tag, text, className) {
 }
 
 function updateAuthForm() {
-  const input = byId("credentials").elements;
+  const form = byId("credentials");
+  const input = form.elements;
   byId("email-field").hidden = !registering;
+  byId("password-hint").hidden = !registering;
   input.email.required = registering;
   input.password.autocomplete = registering ? "new-password" : "current-password";
-  input.password.minLength = registering ? 12 : 0;
+  input.password.minLength = registering ? 8 : 0;
+  updateAuthField(input.username, registering);
+  updateAuthField(input.password, registering);
   byId("submit-auth").textContent = registering ? "הרשמה" : "כניסה";
   byId("toggle-auth").textContent = registering ? "כבר יש לי חשבון" : "יצירת חשבון";
 }
+
+for (const name of ["username", "password"]) {
+  byId("credentials").elements[name].addEventListener("input", event => {
+    updateAuthField(event.currentTarget, registering);
+  });
+}
+byId("credentials").addEventListener("invalid", event => {
+  if (["username", "password"].includes(event.target.name)) {
+    updateAuthField(event.target, registering);
+  }
+}, true);
 
 byId("toggle-auth").onclick = () => {
   registering = !registering;
@@ -116,13 +133,18 @@ async function openGallerySession(username) {
 byId("credentials").onsubmit = event => {
   event.preventDefault();
   const form = event.currentTarget;
-  const { username, email, password } = Object.fromEntries(new FormData(form));
-  form.elements.password.value = "";
   action(byId("submit-auth"), async () => {
     if (!globalThis.isSecureContext || !crypto.subtle) throw new Error("נדרש חיבור HTTPS");
     await opaque.ready;
-    if (registering) await register(username, email, password);
-    await login(username, password);
+    try {
+      await submitCredentials(form, async ({ username, email, password }) => {
+        if (registering) await register(username, email, password);
+        await login(username, password);
+      });
+    } catch (error) {
+      handleAuthError(form, error, registering);
+      throw error;
+    }
   });
 };
 

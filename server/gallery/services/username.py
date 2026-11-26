@@ -5,7 +5,7 @@ import re
 from flask import abort
 
 
-USERNAME_PATTERN = re.compile(r"[a-z][a-z0-9_]{2,23}")
+USERNAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_]{2,23}")
 WINDOWS_RESERVED_DEVICE_NAMES = frozenset(
     {
         "con",
@@ -35,10 +35,30 @@ WINDOWS_RESERVED_DEVICE_NAMES = frozenset(
 
 
 def validate_username(value: object) -> str:
-    if (
-        not isinstance(value, str)
-        or not USERNAME_PATTERN.fullmatch(value)
-        or value in WINDOWS_RESERVED_DEVICE_NAMES
-    ):
-        abort(400, "שם משתמש לא תקין")
+    if not isinstance(value, str) or not USERNAME_PATTERN.fullmatch(value):
+        abort(
+            400,
+            "שם המשתמש חייב להכיל 3–24 תווים, להתחיל באות אנגלית, "
+            "ולהכיל רק אותיות אנגליות, ספרות או קו תחתון. "
+            "שמות התקנים השמורים של Windows אינם מותרים "
+            "(CON, PRN, AUX, NUL, COM1–COM9 ו-LPT1–LPT9).",
+        )
+    # Check Windows-reserved device names case-insensitively
+    if value.lower() in WINDOWS_RESERVED_DEVICE_NAMES:
+        abort(
+            400,
+            "שם המשתמש חייב להכיל 3–24 תווים, להתחיל באות אנגלית, "
+            "ולהכיל רק אותיות אנגליות, ספרות או קו תחתון. "
+            "שמות התקנים השמורים של Windows אינם מותרים "
+            "(CON, PRN, AUX, NUL, COM1–COM9 ו-LPT1–LPT9).",
+        )
     return value
+
+
+def is_username_taken_case_insensitive(database, username: str) -> bool:
+    """Check if a username exists case-insensitively in the database."""
+    with database.connection() as connection:
+        row = connection.execute(
+            "SELECT 1 FROM users WHERE LOWER(username) = LOWER(?)", (username,)
+        ).fetchone()
+    return row is not None
