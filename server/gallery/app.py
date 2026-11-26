@@ -33,7 +33,7 @@ def create_app(settings: Settings | None = None) -> Flask:
     setup_logging(json_format=json_logs, level=log_level)
 
     storage_root = initialize_storage(settings.storage_root)
-    database = Database(storage_root, pool_size=settings.db_pool_size)
+    database = Database(storage_root)
     database.set_settings(settings)
     database.initialize()
     photo_storage = PhotoStorage(storage_root)

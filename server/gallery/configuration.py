@@ -29,7 +29,6 @@ class Settings:
     opaque_timeout_seconds: float = 15.0
     opaque_circuit_breaker_threshold: int = 5
     opaque_circuit_breaker_timeout: float = 30.0
-    db_pool_size: int = 10
     db_busy_timeout_ms: int = 5000
     db_cache_size_mb: int = 32
     db_mmap_size_mb: int = 256
@@ -85,7 +84,6 @@ class Settings:
             opaque_timeout_seconds=parse_float("GALLERY_OPAQUE_TIMEOUT", 15.0),
             opaque_circuit_breaker_threshold=parse_int("GALLERY_OPAQUE_CB_THRESHOLD", 5),
             opaque_circuit_breaker_timeout=parse_float("GALLERY_OPAQUE_CB_TIMEOUT", 30.0),
-            db_pool_size=parse_int("GALLERY_DB_POOL_SIZE", 10),
             db_busy_timeout_ms=parse_int("GALLERY_DB_BUSY_TIMEOUT", 5000),
             db_cache_size_mb=parse_int("GALLERY_DB_CACHE_MB", 32),
             db_mmap_size_mb=parse_int("GALLERY_DB_MMAP_MB", 256),

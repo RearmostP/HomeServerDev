@@ -57,9 +57,8 @@ CREATE INDEX IF NOT EXISTS challenges_expires ON challenges(expires);
 
 
 def _configure_connection(conn: sqlite3.Connection, settings: Settings) -> None:
-    """Apply performance pragmas to a connection."""
+    """Apply per-connection performance pragmas."""
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = NORMAL")
     conn.execute(f"PRAGMA busy_timeout = {settings.db_busy_timeout_ms}")
     conn.execute(f"PRAGMA cache_size = {-settings.db_cache_size_mb * 1024}")  # KB, negative = pages
@@ -67,13 +66,18 @@ def _configure_connection(conn: sqlite3.Connection, settings: Settings) -> None:
     conn.execute(f"PRAGMA mmap_size = {settings.db_mmap_size_mb * 1024 * 1024}")
 
 
+def _initialize_database_pragmas(conn: sqlite3.Connection) -> None:
+    """Apply one-time database pragmas (WAL mode, etc.)."""
+    conn.execute("PRAGMA journal_mode = WAL")
+
+
 class Database:
     """Own the gallery SQLite file and provide transactional connections."""
 
-    def __init__(self, storage_root: Path, pool_size: int = 10):
+    def __init__(self, storage_root: Path):
         self.path = storage_root / "gallery.sqlite3"
-        self.pool_size = pool_size
         self._settings: Settings | None = None
+        self._pragmas_initialized = False
 
     def _get_settings(self) -> Settings:
         if self._settings is None:
@@ -89,6 +93,11 @@ class Database:
     def initialize(self) -> None:
         with self.connection() as connection:
             connection.executescript(SCHEMA)
+            # Initialize one-time pragmas (WAL mode)
+            if not self._pragmas_initialized:
+                _initialize_database_pragmas(connection)
+                self._pragmas_initialized = True
+                logger.info("Database initialized with WAL mode")
 
     @contextmanager
     def connection(self, write: bool = False) -> Iterator[sqlite3.Connection]:

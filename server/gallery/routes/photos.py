@@ -42,9 +42,22 @@ def create_photo_blueprint(
         if len(ciphertext) < 17:
             abort(400)
 
+        # Verify album exists and user has access BEFORE creating file/directory
+        with database.connection() as connection:
+            require_album_access(connection, owner, number, owner)
+            album = connection.execute(
+                """SELECT wrapped_key FROM access
+                   WHERE owner=? AND number=? AND username=?""",
+                (owner, number, owner),
+            ).fetchone()
+            if album is None:
+                abort(404)
+            if album["wrapped_key"] != required_field(request.form, "albumVersion"):
+                abort(409, "האלבום השתנה")
+
         photo_id = secrets.token_hex(16)
 
-        # Atomically write file with per-album lock
+        # Atomically write file with per-album lock (only after album verified)
         try:
             path = photo_storage.upload_photo_atomic(owner, number, photo_id, ciphertext)
         except FileExistsError:
@@ -52,17 +65,6 @@ def create_photo_blueprint(
 
         try:
             with database.connection(write=True) as connection:
-                album = connection.execute(
-                    """SELECT wrapped_key FROM access
-                       WHERE owner=? AND number=? AND username=?""",
-                    (owner, number, owner),
-                ).fetchone()
-                if (
-                    album is None
-                    or album["wrapped_key"]
-                    != required_field(request.form, "albumVersion")
-                ):
-                    abort(409, "האלבום השתנה")
                 connection.execute(
                     "INSERT INTO photos VALUES (?, ?, ?, ?, ?)",
                     (photo_id, owner, number, metadata, int(time.time())),

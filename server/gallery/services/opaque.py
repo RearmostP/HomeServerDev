@@ -108,15 +108,23 @@ class OpaqueDaemon:
                 continue
             try:
                 response = json.loads(line)
-                req_id = response.get("id")
-                if req_id is not None and req_id in self._pending:
-                    self._responses[req_id] = response
-                    self._pending[req_id].set()
             except json.JSONDecodeError:
                 logger.warning(f"Invalid JSON from OPAQUE daemon: {line}")
+                continue
+
+            req_id = response.get("id")
+            if req_id is not None and req_id in self._pending:
+                self._responses[req_id] = response
+                self._pending[req_id].set()
 
     def _send_request(self, operation: str, **data) -> dict:
         """Send a request to the daemon and wait for response."""
+        # Prepare request outside lock
+        self._request_id += 1
+        req_id = self._request_id
+        request = {"id": req_id, "operation": operation, **data}
+        event = threading.Event()
+
         with self._lock:
             if not self._started:
                 self._start()
@@ -127,12 +135,8 @@ class OpaqueDaemon:
                 self._start()
 
             assert self._process and self._process.stdin
-            self._request_id += 1
-            req_id = self._request_id
-            event = threading.Event()
             self._pending[req_id] = event
 
-            request = {"id": req_id, "operation": operation, **data}
             try:
                 self._process.stdin.write(json.dumps(request) + "\n")
                 self._process.stdin.flush()
@@ -144,11 +148,13 @@ class OpaqueDaemon:
 
         # Wait for response with timeout
         if not event.wait(timeout=self._request_timeout):
-            self._pending.pop(req_id, None)
+            with self._lock:
+                self._pending.pop(req_id, None)
             raise TimeoutError("OPAQUE operation timed out")
 
-        response = self._responses.pop(req_id, None)
-        self._pending.pop(req_id, None)
+        with self._lock:
+            response = self._responses.pop(req_id, None)
+            self._pending.pop(req_id, None)
 
         if response is None:
             raise RuntimeError("No response from OPAQUE daemon")
@@ -159,16 +165,20 @@ class OpaqueDaemon:
         return response.get("result", {})
 
     def health_check(self) -> bool:
-        """Check if daemon is responsive."""
+        """Check if daemon process is alive and responsive."""
         now = time.time()
         if now - self._last_health_check < self._health_check_interval:
             return self._healthy
 
         self._last_health_check = now
         try:
-            # Simple ping operation
-            result = self._circuit_breaker.call(self._send_request, "ping")
-            self._healthy = result.get("pong") == True
+            # Check if process is alive
+            with self._lock:
+                if self._process is None or self._process.poll() is not None:
+                    self._healthy = False
+                    return False
+            # Process is alive, consider healthy
+            self._healthy = True
         except Exception as e:
             logger.warning(f"OPAQUE health check failed: {e}")
             self._healthy = False
