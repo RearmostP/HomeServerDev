@@ -96,13 +96,13 @@ class Database:
         with self.connection() as connection:
             try:
                 connection.executescript(SCHEMA)
-            except sqlite3.OperationalError as e:
-                if "users_username_nocase" in str(e) and "UNIQUE constraint failed" in str(e):
+            except sqlite3.IntegrityError as error:
+                if str(error) == "UNIQUE constraint failed: users.username":
                     raise RuntimeError(
-                        "Database contains case-insensitive duplicate usernames. "
-                        "Cannot create case-insensitive unique index. "
-                        "Resolve duplicates manually before upgrading."
-                    ) from e
+                        "Database contains usernames that differ only by letter case, "
+                        "so the case-insensitive unique index cannot be created. "
+                        "Resolve the conflicting usernames manually, then rerun the server."
+                    ) from error
                 raise
             # Initialize one-time pragmas (WAL mode)
             if not self._pragmas_initialized:

@@ -1,10 +1,11 @@
 import io
 import os
+import sqlite3
 import shutil
 import subprocess
 import sys
 import tempfile
-from contextlib import nullcontext
+from contextlib import closing, nullcontext
 from dataclasses import replace
 from types import ModuleType, SimpleNamespace
 import unittest
@@ -92,6 +93,76 @@ class ServerTests(unittest.TestCase):
         return self.client.post(
             path, json=body, headers={"Origin": self.settings.origin}
         )
+
+    def test_database_initialization_reports_legacy_case_insensitive_duplicates(self):
+        storage_root = Path(self.temporary.name) / "legacy-database"
+        storage_root.mkdir()
+        database = Database(storage_root)
+        database.set_settings(self.settings)
+        with closing(sqlite3.connect(database.path)) as connection, connection:
+            connection.execute(
+                """CREATE TABLE users (
+                    username TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL,
+                    record TEXT NOT NULL, public_key TEXT NOT NULL,
+                    private_key TEXT NOT NULL
+                )"""
+            )
+            connection.executemany(
+                "INSERT INTO users VALUES (?, ?, ?, ?, ?)",
+                [
+                    ("Alice", "alice@example.com", "record-a", "public-a", "private-a"),
+                    ("alice", "lower@example.com", "record-b", "public-b", "private-b"),
+                ],
+            )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "differ only by letter case.*Resolve the conflicting usernames manually",
+        ):
+            database.initialize()
+
+        with closing(sqlite3.connect(database.path)) as connection, connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT username, email FROM users ORDER BY username"
+                ).fetchall(),
+                [
+                    ("Alice", "alice@example.com"),
+                    ("alice", "lower@example.com"),
+                ],
+            )
+
+    def test_database_initialization_succeeds_without_username_conflicts(self):
+        storage_root = Path(self.temporary.name) / "clean-database"
+        storage_root.mkdir()
+        database = Database(storage_root)
+        database.set_settings(self.settings)
+
+        database.initialize()
+
+        with closing(sqlite3.connect(database.path)) as connection, connection:
+            index = connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type='index' "
+                "AND name='users_username_nocase'"
+            ).fetchone()
+        self.assertIsNotNone(index)
+        self.assertIn("COLLATE NOCASE", index[0])
+
+    def test_database_initialization_preserves_unrelated_integrity_errors(self):
+        database = Database(Path(self.temporary.name))
+        database.set_settings(self.settings)
+        integrity_error = sqlite3.IntegrityError(
+            "UNIQUE constraint failed: unrelated_table.value"
+        )
+        connection = SimpleNamespace(
+            executescript=unittest.mock.Mock(side_effect=integrity_error)
+        )
+
+        with patch.object(database, "connection", return_value=nullcontext(connection)):
+            with self.assertRaises(sqlite3.IntegrityError) as raised:
+                database.initialize()
+
+        self.assertIs(raised.exception, integrity_error)
 
     def register_and_login(self, username="alice"):
         with patch(
